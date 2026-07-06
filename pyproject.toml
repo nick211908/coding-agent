@@ -10,6 +10,7 @@ dependencies = [
     "fastmcp>=3.4.2",
     "openai>=2.44.0",
     "platformdirs>=4.10.0",
+    "python-dotenv>=1.1.1",
     "pydantic>=2.13.4",
     "tiktoken>=0.13.0",
     "tomli>=2.4.1",
