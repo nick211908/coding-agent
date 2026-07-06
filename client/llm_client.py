@@ -52,6 +52,14 @@ class LLMClient:
             for tool in tools
         ]
 
+    def _get_cached_tokens(self, usage: Any) -> int:
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        if prompt_details is None:
+            return 0
+
+        cached_tokens = getattr(prompt_details, "cached_tokens", None)
+        return cached_tokens or 0
+
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
@@ -123,7 +131,7 @@ class LLMClient:
                     prompt_tokens=chunk.usage.prompt_tokens,
                     completion_tokens=chunk.usage.completion_tokens,
                     total_tokens=chunk.usage.total_tokens,
-                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens,
+                    cached_tokens=self._get_cached_tokens(chunk.usage),
                 )
 
             if not chunk.choices:
@@ -223,7 +231,7 @@ class LLMClient:
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
                 total_tokens=response.usage.total_tokens,
-                cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
+                cached_tokens=self._get_cached_tokens(response.usage),
             )
 
         return StreamEvent(

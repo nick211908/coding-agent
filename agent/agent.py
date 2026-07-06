@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from typing import AsyncGenerator, Awaitable, Callable
 from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
@@ -25,7 +26,7 @@ class Agent:
 
         final_response: str | None = None
 
-        async for event in self._agentic_loop():
+        async for event in self._agentic_loop(message):
             yield event
 
             if event.type == AgentEventType.TEXT_COMPLETE:
@@ -34,8 +35,31 @@ class Agent:
         await self.session.hook_system.trigger_after_agent(message, final_response)
         yield AgentEvent.agent_end(final_response)
 
-    async def _agentic_loop(self) -> AsyncGenerator[AgentEvent, None]:
+    def _should_enable_tools(self, message: str) -> bool:
+        normalized = " ".join(message.lower().strip().split())
+        if not normalized:
+            return False
+
+        simple_messages = {
+            "hi",
+            "hii",
+            "hiii",
+            "hello",
+            "hey",
+            "hlo",
+            "yo",
+            "sup",
+            "thanks",
+            "thank you",
+            "ok",
+            "okay",
+        }
+
+        return normalized not in simple_messages
+
+    async def _agentic_loop(self, latest_user_message: str) -> AsyncGenerator[AgentEvent, None]:
         max_turns = self.config.max_turns
+        enable_tools = self._should_enable_tools(latest_user_message)
 
         for turn_num in range(max_turns):
             self.session.increment_turn()
@@ -52,7 +76,7 @@ class Agent:
                     self.session.context_manager.set_latest_usage(usage)
                     self.session.context_manager.add_usage(usage)
 
-            tool_schemas = self.session.tool_registry.get_schemas()
+            tool_schemas = self.session.tool_registry.get_schemas() if enable_tools else []
 
             tool_calls: list[ToolCall] = []
             usage: TokenUsage | None = None
@@ -85,7 +109,7 @@ class Agent:
                             "type": "function",
                             "function": {
                                 "name": tc.name,
-                                "arguments": str(tc.arguments),
+                                "arguments": json.dumps(tc.arguments),
                             },
                         }
                         for tc in tool_calls
@@ -108,6 +132,8 @@ class Agent:
 
                 self.session.context_manager.prune_tool_outputs()
                 return
+
+            enable_tools = True
 
             tool_call_results: list[ToolResultMessage] = []
 
