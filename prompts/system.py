@@ -1,6 +1,7 @@
 from datetime import datetime
 import platform
 from config.config import Config
+from skills.models import SkillDefinition
 from tools.base import Tool
 
 
@@ -8,6 +9,8 @@ def get_system_prompt(
     config: Config,
     user_memory: str | None = None,
     tools: list[Tool] | None = None,
+    available_skills: list[SkillDefinition] | None = None,
+    active_skills: list[SkillDefinition] | None = None,
 ) -> str:
     parts = []
 
@@ -18,6 +21,9 @@ def get_system_prompt(
 
     if tools:
         parts.append(_get_tool_guidelines_section(tools))
+
+    if available_skills:
+        parts.append(_get_skills_section(available_skills, active_skills or []))
 
     # AGENTS.md spec
     parts.append(_get_agents_md_section())
@@ -285,6 +291,47 @@ You have access to the following tools to accomplish your tasks:
    - Use sub-agents when the task involves complex refactoring, codebase exploration, or system-wide analysis"""
 
     return guidelines
+
+
+def _get_skills_section(
+    available_skills: list[SkillDefinition],
+    active_skills: list[SkillDefinition],
+) -> str:
+    lines = [
+        "# Skills",
+        "",
+        "The following reusable skills are available in this project.",
+        "Use them when the user's request matches their purpose.",
+        "",
+        "## Available Skills",
+        "",
+    ]
+
+    for skill in available_skills:
+        description = skill.description or "No description provided."
+        lines.append(f"- **{skill.name}**: {description}")
+
+    if active_skills:
+        lines.extend(
+            [
+                "",
+                "## Loaded Skill Instructions",
+                "",
+                "The following skills matched the current conversation and are loaded for this turn.",
+            ]
+        )
+
+        for skill in active_skills:
+            lines.extend(
+                [
+                    "",
+                    f"### {skill.name}",
+                    "",
+                    skill.content.strip(),
+                ]
+            )
+
+    return "\n".join(lines)
 
 
 def get_compression_prompt() -> str:

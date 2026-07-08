@@ -10,6 +10,7 @@ from context.loop_detector import LoopDetector
 from context.manager import ContextManager
 from hooks.hook_system import HookSystem
 from safety.approval import ApprovalManager
+from skills import SkillDiscoveryManager, SkillRegistry
 from tools.discovery import ToolDiscoveryManager
 from tools.mcp.mcp_manager import MCPManager
 from tools.registry import create_default_registry
@@ -20,10 +21,15 @@ class Session:
         self.config = config
         self.client = LLMClient(config=config)
         self.tool_registry = create_default_registry(config)
+        self.skill_registry = SkillRegistry(config)
         self.context_manager: ContextManager | None = None
         self.discovery_manager = ToolDiscoveryManager(
             self.config,
             self.tool_registry,
+        )
+        self.skill_discovery_manager = SkillDiscoveryManager(
+            self.config,
+            self.skill_registry,
         )
         self.mcp_manager = MCPManager(self.config)
         self.chat_compactor = ChatCompactor(self.client)
@@ -44,10 +50,12 @@ class Session:
         self.mcp_manager.register_tools(self.tool_registry)
 
         self.discovery_manager.discover_all()
+        self.skill_discovery_manager.discover_all()
         self.context_manager = ContextManager(
             config=self.config,
             user_memory=self._load_memory(),
             tools=self.tool_registry.get_tools(),
+            skills=self.skill_registry.get_skills(),
         )
 
     def _load_memory(self) -> str | None:

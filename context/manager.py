@@ -3,6 +3,7 @@ from typing import Any
 from client.response import TokenUsage
 from config.config import Config
 from prompts.system import get_system_prompt
+from skills.models import SkillDefinition
 from dataclasses import dataclass, field
 
 from tools.base import Tool
@@ -42,9 +43,12 @@ class ContextManager:
         config: Config,
         user_memory: str | None,
         tools: list[Tool] | None,
+        skills: list[SkillDefinition] | None,
     ) -> None:
-        self._system_prompt = get_system_prompt(config, user_memory, tools)
         self.config = config
+        self._user_memory = user_memory
+        self._tools = tools
+        self._skills = skills or []
         self._model_name = self.config.model_name
         self._messages: list[MessageItem] = []
         self._latest_usage = TokenUsage()
@@ -96,11 +100,12 @@ class ContextManager:
     def get_messages(self) -> list[dict[str, Any]]:
         messages = []
 
-        if self._system_prompt:
+        system_prompt = self._build_system_prompt()
+        if system_prompt:
             messages.append(
                 {
                     "role": "system",
-                    "content": self._system_prompt,
+                    "content": system_prompt,
                 }
             )
 
@@ -108,6 +113,50 @@ class ContextManager:
             messages.append(item.to_dict())
 
         return messages
+
+    def _build_system_prompt(self) -> str:
+        active_skills = self._get_active_skills()
+        return get_system_prompt(
+            self.config,
+            self._user_memory,
+            self._tools,
+            available_skills=self._skills,
+            active_skills=active_skills,
+        )
+
+    def _get_active_skills(self) -> list[SkillDefinition]:
+        if not self._skills or not self.config.skills_enabled:
+            return []
+
+        allowed = {name.casefold() for name in self.config.allowed_skills or []}
+        always_loaded = {name.casefold() for name in self.config.always_loaded_skills}
+        query_parts = [
+            message.content
+            for message in self._messages
+            if message.role == "user" and message.content
+        ]
+        normalized_query = " ".join(" ".join(query_parts).casefold().split())
+        active_skills: list[SkillDefinition] = []
+
+        for skill in self._skills:
+            skill_name = skill.name.casefold()
+            if allowed and skill_name not in allowed:
+                continue
+
+            trigger_match = any(
+                trigger.casefold() in normalized_query for trigger in skill.triggers
+            )
+            name_match = skill_name in normalized_query if normalized_query else False
+
+            if (
+                skill.always_include
+                or skill_name in always_loaded
+                or trigger_match
+                or name_match
+            ):
+                active_skills.append(skill)
+
+        return active_skills
 
     def needs_compression(self) -> bool:
         context_limit = self.config.model.context_window

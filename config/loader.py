@@ -4,7 +4,10 @@ from typing import Any
 from platformdirs import user_config_dir, user_data_dir
 from dotenv import load_dotenv
 
-import tomli
+try:
+    import tomllib as tomli
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli
 
 from config.config import Config
 from utils.errors import ConfigError

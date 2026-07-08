@@ -99,6 +99,13 @@ class Config(BaseModel):
         None,
         description="If set, only these tools will be available to the agent",
     )
+    skills_enabled: bool = True
+    extra_skill_dirs: list[Path] = Field(default_factory=list)
+    allowed_skills: list[str] | None = Field(
+        None,
+        description="If set, only these skills will be available to the agent",
+    )
+    always_loaded_skills: list[str] = Field(default_factory=list)
 
     developer_instructions: str | None = None
     user_instructions: str | None = None

@@ -46,6 +46,33 @@ A terminal-based, OpenAI-compatible coding agent that reads, edits, and runs cod
 
    Drop a `.ai-agent/config.toml` in your project to override model, approval policy, hooks, MCP servers, etc., and/or an `AGENT.MD` file for project-specific developer instructions that get injected into the system prompt.
 
+5. **(Optional) Add reusable skills**
+
+   Skills are prompt-side instruction bundles that the agent can load when a request matches them. Place them under `.ai-agent/skills/<skill-name>/`.
+
+   Minimal example:
+   ```text
+   .ai-agent/
+     skills/
+       debugging/
+         SKILL.md
+         skill.toml
+   ```
+
+   `SKILL.md` contains the actual instructions. `skill.toml` is optional metadata:
+   ```toml
+   name = "debugging"
+   description = "Structured debugging workflow"
+   triggers = ["debug", "traceback", "investigate"]
+   always_include = false
+   ```
+
+   Relevant config keys:
+   - `skills_enabled`
+   - `allowed_skills`
+   - `always_loaded_skills`
+   - `extra_skill_dirs`
+
 ## Usage Examples
 
 Run interactively:
