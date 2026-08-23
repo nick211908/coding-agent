@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from enum import Enum
 import os
 from pathlib import Path
 from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -24,13 +26,10 @@ class MCPServerConfig(BaseModel):
     enabled: bool = True
     startup_timeout_sec: float = 10
 
-    # stdio transport
     command: str | None = None
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
     cwd: Path | None = None
-
-    # http/sse transport
     url: str | None = None
 
     @model_validator(mode="after")
@@ -71,8 +70,8 @@ class HookTrigger(str, Enum):
 class HookConfig(BaseModel):
     name: str
     trigger: HookTrigger
-    command: str | None = None  # python3 tests.py
-    script: str | None = None  # *.sh
+    command: str | None = None
+    script: str | None = None
     timeout_sec: float = 30
     enabled: bool = True
 
@@ -94,6 +93,18 @@ class Config(BaseModel):
     approval: ApprovalPolicy = ApprovalPolicy.ON_REQUEST
     max_turns: int = 100
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
+    api_key_value: str | None = Field(
+        default=None,
+        alias="api_key",
+        exclude=True,
+        repr=False,
+    )
+    base_url_value: str | None = Field(
+        default=None,
+        alias="base_url",
+        exclude=True,
+        repr=False,
+    )
 
     allowed_tools: list[str] | None = Field(
         None,
@@ -114,11 +125,11 @@ class Config(BaseModel):
 
     @property
     def api_key(self) -> str | None:
-        return os.environ.get("API_KEY")
+        return self.api_key_value or os.environ.get("API_KEY")
 
     @property
     def base_url(self) -> str | None:
-        return os.environ.get("BASE_URL")
+        return self.base_url_value or os.environ.get("BASE_URL")
 
     @property
     def model_name(self) -> str:
@@ -132,15 +143,21 @@ class Config(BaseModel):
     def temperature(self) -> float:
         return self.model.temperature
 
-    @model_name.setter
-    def temperature(self, value: str) -> None:
+    @temperature.setter
+    def temperature(self, value: float) -> None:
         self.model.temperature = value
+
+    def set_credentials(self, api_key: str, base_url: str | None = None) -> None:
+        self.api_key_value = api_key
+        self.base_url_value = base_url or None
 
     def validate(self) -> list[str]:
         errors: list[str] = []
 
         if not self.api_key:
-            errors.append("No API key found. Set API_KEY environment variable")
+            errors.append(
+                "No API key found. Run `code-it --configure` or set API_KEY."
+            )
 
         if not self.cwd.exists():
             errors.append(f"Working directory does not exist: {self.cwd}")
@@ -148,4 +165,9 @@ class Config(BaseModel):
         return errors
 
     def to_dict(self) -> dict[str, Any]:
-        return self.model_dump(mode="json")
+        data = self.model_dump(mode="json", by_alias=True)
+        if self.api_key_value:
+            data["api_key"] = self.api_key_value
+        if self.base_url_value:
+            data["base_url"] = self.base_url_value
+        return data

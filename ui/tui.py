@@ -601,6 +601,7 @@ class TUI:
 - `/config` - Show current configuration
 - `/model <name>` - Change the model
 - `/approval <mode>` - Change approval mode
+- `/setup` - Save or update API credentials
 - `/stats` - Show session statistics
 - `/tools` - List available tools
 - `/mcp` - Show MCP server status

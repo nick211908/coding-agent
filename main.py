@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 import sys
+
 import click
 
 from agent.agent import Agent
@@ -8,10 +9,35 @@ from agent.events import AgentEventType
 from agent.persistence import PersistenceManager, SessionSnapshot
 from agent.session import Session
 from config.config import ApprovalPolicy, Config
-from config.loader import load_config
+from config.loader import get_system_config_path, load_config, save_system_config
 from ui.tui import TUI, get_console
 
 console = get_console()
+
+
+def configure_credentials_interactively(config: Config | None = None) -> Config:
+    config = config or load_config(cwd=None)
+    current_base_url = config.base_url or ""
+
+    console.print("[bold]Credential Setup[/bold]")
+    api_key = click.prompt("API key", hide_input=True).strip()
+    base_url = click.prompt(
+        "Base URL (leave blank for provider default)",
+        default=current_base_url,
+        show_default=bool(current_base_url),
+    ).strip()
+
+    save_system_config(
+        {
+            "api_key": api_key,
+            "base_url": base_url or None,
+        }
+    )
+    config.set_credentials(api_key=api_key, base_url=base_url or None)
+    console.print(
+        f"[success]Credentials saved to {get_system_config_path()}[/success]"
+    )
+    return config
 
 
 class CLI:
@@ -27,11 +53,11 @@ class CLI:
 
     async def run_interactive(self) -> str | None:
         self.tui.print_welcome(
-            "AI Agent",
+            "code-it",
             lines=[
                 f"model: {self.config.model_name}",
                 f"cwd: {self.config.cwd}",
-                "commands: /help /config /approval /model /exit",
+                "commands: /help /config /approval /setup /model /exit",
             ],
         )
 
@@ -62,14 +88,10 @@ class CLI:
         console.print("\n[dim]Goodbye![/dim]")
 
     def _get_tool_kind(self, tool_name: str) -> str | None:
-        tool_kind = None
         tool = self.agent.session.tool_registry.get(tool_name)
         if not tool:
-            tool_kind = None
-
-        tool_kind = tool.kind.value
-
-        return tool_kind
+            return None
+        return tool.kind.value
 
     async def _process_message(self, message: str) -> str | None:
         if not self.agent:
@@ -141,6 +163,7 @@ class CLI:
             console.print(f"  Working Dir: {self.config.cwd}")
             console.print(f"  Max Turns: {self.config.max_turns}")
             console.print(f"  Hooks Enabled: {self.config.hooks_enabled}")
+            console.print(f"  Base URL: {self.config.base_url or 'provider default'}")
         elif cmd_name == "/model":
             if cmd_args:
                 self.config.model_name = cmd_args
@@ -155,15 +178,18 @@ class CLI:
                     console.print(
                         f"[success]Approval policy changed to: {cmd_args} [/success]"
                     )
-                except:
+                except ValueError:
                     console.print(
                         f"[error]Incorrect approval policy: {cmd_args} [/error]"
                     )
                     console.print(
-                        f"Valid options: {', '.join(p for p in ApprovalPolicy)}"
+                        f"Valid options: {', '.join(p.value for p in ApprovalPolicy)}"
                     )
             else:
                 console.print(f"Current approval policy: {self.config.approval.value}")
+        elif cmd_name == "/setup":
+            self.config = configure_credentials_interactively(self.config)
+            self.tui = TUI(self.config, console)
         elif cmd_name == "/stats":
             stats = self.agent.session.get_stats()
             console.print("\n[bold]Session Statistics [/bold]")
@@ -201,22 +227,20 @@ class CLI:
             persistence_manager = PersistenceManager()
             sessions = persistence_manager.list_sessions()
             console.print("\n[bold]Saved Sessions[/bold]")
-            for s in sessions:
+            for saved_session in sessions:
                 console.print(
-                    f"  • {s['session_id']} (turns: {s['turn_count']}, updated: {s['updated_at']})"
+                    f"  • {saved_session['session_id']} (turns: {saved_session['turn_count']}, updated: {saved_session['updated_at']})"
                 )
         elif cmd_name == "/resume":
             if not cmd_args:
-                console.print(f"[error]Usage: /resume <session_id> [/error]")
+                console.print("[error]Usage: /resume <session_id> [/error]")
             else:
                 persistence_manager = PersistenceManager()
                 snapshot = persistence_manager.load_session(cmd_args)
                 if not snapshot:
-                    console.print(f"[error]Session does not exist [/error]")
+                    console.print("[error]Session does not exist [/error]")
                 else:
-                    session = Session(
-                        config=self.config,
-                    )
+                    session = Session(config=self.config)
                     await session.initialize()
                     session.session_id = snapshot.session_id
                     session.created_at = snapshot.created_at
@@ -233,11 +257,13 @@ class CLI:
                             )
                         elif msg["role"] == "assistant":
                             session.context_manager.add_assistant_message(
-                                msg.get("content", ""), msg.get("tool_calls")
+                                msg.get("content", ""),
+                                msg.get("tool_calls"),
                             )
                         elif msg["role"] == "tool":
                             session.context_manager.add_tool_result(
-                                msg.get("tool_call_id", ""), msg.get("content", "")
+                                msg.get("tool_call_id", ""),
+                                msg.get("content", ""),
                             )
 
                     await self.agent.session.client.close()
@@ -261,16 +287,14 @@ class CLI:
             console.print(f"[success]Checkpoint created: {checkpoint_id}[/success]")
         elif cmd_name == "/restore":
             if not cmd_args:
-                console.print(f"[error]Usage: /restire <checkpoint_id> [/error]")
+                console.print("[error]Usage: /restore <checkpoint_id> [/error]")
             else:
                 persistence_manager = PersistenceManager()
                 snapshot = persistence_manager.load_checkpoint(cmd_args)
                 if not snapshot:
-                    console.print(f"[error]Checkpoint does not exist [/error]")
+                    console.print("[error]Checkpoint does not exist [/error]")
                 else:
-                    session = Session(
-                        config=self.config,
-                    )
+                    session = Session(config=self.config)
                     await session.initialize()
                     session.session_id = snapshot.session_id
                     session.created_at = snapshot.created_at
@@ -287,11 +311,13 @@ class CLI:
                             )
                         elif msg["role"] == "assistant":
                             session.context_manager.add_assistant_message(
-                                msg.get("content", ""), msg.get("tool_calls")
+                                msg.get("content", ""),
+                                msg.get("tool_calls"),
                             )
                         elif msg["role"] == "tool":
                             session.context_manager.add_tool_result(
-                                msg.get("tool_call_id", ""), msg.get("content", "")
+                                msg.get("tool_call_id", ""),
+                                msg.get("content", ""),
                             )
 
                     await self.agent.session.client.close()
@@ -299,7 +325,7 @@ class CLI:
 
                     self.agent.session = session
                     console.print(
-                        f"[success]Resumed session: {session.session_id}, checkpoint: {checkpoint_id}[/success]"
+                        f"[success]Resumed session: {session.session_id}, checkpoint: {cmd_args}[/success]"
                     )
         else:
             console.print(f"[error]Unknown command: {cmd_name}[/error]")
@@ -315,26 +341,38 @@ class CLI:
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     help="Current working directory",
 )
-def main(
-    prompt: str | None,
-    cwd: Path | None,
-):
+@click.option(
+    "--configure",
+    is_flag=True,
+    help="Prompt for API credentials and save them to the user config file.",
+)
+def main(prompt: str | None, cwd: Path | None, configure: bool) -> None:
     try:
         config = load_config(cwd=cwd)
-    except Exception as e:
-        console.print(f"[error]Configuration Error: {e}[/error]")
+    except Exception as error:
+        console.print(f"[error]Configuration Error: {error}[/error]")
+        sys.exit(1)
+
+    if configure:
+        configure_credentials_interactively(config)
+        return
+
+    if not config.api_key:
+        if click.confirm("No API key configured. Set it up now?", default=True):
+            config = configure_credentials_interactively(config)
+        else:
+            console.print(
+                "[error]No API key found. Run `code-it --configure` to save one.[/error]"
+            )
+            sys.exit(1)
 
     errors = config.validate()
-
     if errors:
         for error in errors:
             console.print(f"[error]{error}[/error]")
-
         sys.exit(1)
 
     cli = CLI(config)
-
-    # messages = [{"role": "user", "content": prompt}]
     if prompt:
         result = asyncio.run(cli.run_single(prompt))
         if result is None:
@@ -343,4 +381,5 @@ def main(
         asyncio.run(cli.run_interactive())
 
 
-main()
+if __name__ == "__main__":
+    main()

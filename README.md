@@ -1,97 +1,79 @@
 # code-it
 
-A terminal-based, OpenAI-compatible coding agent that reads, edits, and runs code in your project through a ReAct-style tool-calling loop — with approvals, hooks, MCP, and session persistence built in.
+A terminal-based, OpenAI-compatible coding agent that reads, edits, and runs code in your project through a ReAct-style tool-calling loop with approvals, hooks, MCP, and session persistence.
 
-## Highlights
+## Install
 
-- **Agentic loop** — sends your request to an LLM, executes any tool calls it asks for (read/write/edit files, shell, grep, glob, web search/fetch), feeds results back, and repeats until it produces a final answer.
-- **Built-in tool suite** — `read_file`, `write_file`, `edit_file`, `shell`, `list_dir`, `grep`, `glob`, `web_search`, `web_fetch`, `todo`, and `memory` tools out of the box.
-- **MCP support** — connect additional tools from external MCP servers over stdio or HTTP/SSE.
-- **Safety approvals** — configurable approval policies (`on-request`, `on-failure`, `auto`, `auto-edit`, `never`, `yolo`) gate risky/mutating tool calls before they run.
-- **Lifecycle hooks** — run your own shell scripts before/after the agent runs or before/after any tool call.
-- **Session persistence** — save, list, resume, checkpoint, and restore conversations across runs.
-- **Provider-agnostic** — works with any OpenAI-compatible endpoint (OpenAI, OpenRouter, local models, etc.) via `API_KEY` / `BASE_URL`.
-- **Rich terminal UI** — streaming responses, colorized tool-call output, and diffs, powered by `rich`.
+Prerequisites: Python 3.13+.
 
-## Installation and Setup
+Install from the repo while developing:
 
-**Prerequisites:** Python 3.13+ and [uv](https://docs.astral.sh/uv/) (recommended) or `pip`.
-
-1. **Clone the repo**
-   ```bash
-   git clone git@github.com:nick211908/coding-agent.git
-   cd coding-agent
-   ```
-
-2. **Install dependencies**
-   ```bash
-   uv sync
-   ```
-   or, with plain pip:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate   # .venv\Scripts\activate on Windows
-   pip install -e .
-   ```
-
-3. **Configure your API credentials**
-
-   Create a `.env` file in the project root:
-   ```bash
-   API_KEY=your-api-key-here
-   BASE_URL=https://openrouter.ai/api/v1   # or any OpenAI-compatible endpoint
-   ```
-
-4. **(Optional) Project-level config**
-
-   Drop a `.ai-agent/config.toml` in your project to override model, approval policy, hooks, MCP servers, etc., and/or an `AGENT.MD` file for project-specific developer instructions that get injected into the system prompt.
-
-5. **(Optional) Add reusable skills**
-
-   Skills are prompt-side instruction bundles that the agent can load when a request matches them. Place them under `.ai-agent/skills/<skill-name>/`.
-
-   Minimal example:
-   ```text
-   .ai-agent/
-     skills/
-       debugging/
-         SKILL.md
-         skill.toml
-   ```
-
-   `SKILL.md` contains the actual instructions. `skill.toml` is optional metadata:
-   ```toml
-   name = "debugging"
-   description = "Structured debugging workflow"
-   triggers = ["debug", "traceback", "investigate"]
-   always_include = false
-   ```
-
-   Relevant config keys:
-   - `skills_enabled`
-   - `allowed_skills`
-   - `always_loaded_skills`
-   - `extra_skill_dirs`
-
-## Usage Examples
-
-Run interactively:
 ```bash
-uv run main.py
+pip install -e .
 ```
 
-Run a single one-shot prompt:
+Build distributable artifacts:
+
 ```bash
-uv run main.py "Summarize what this repo does"
+python -m build
+```
+
+This creates:
+
+- `dist/code_it-<version>-py3-none-any.whl`
+- `dist/code_it-<version>.tar.gz`
+
+## First Run
+
+After installation, use the console entry point:
+
+```bash
+code-it --configure
+```
+
+This prompts for:
+
+- your API key
+- an optional base URL for any OpenAI-compatible provider
+
+The values are saved in your user config file at:
+
+- Windows: `%APPDATA%\code-it\config.toml`
+- macOS: `~/Library/Application Support/code-it/config.toml`
+- Linux: `~/.config/code-it/config.toml`
+
+You can still use a project-local `.env` file or `API_KEY` and `BASE_URL` environment variables, but they are no longer required for packaged installs.
+
+## Usage
+
+Run interactively:
+
+```bash
+code-it
+```
+
+Run a single prompt:
+
+```bash
+code-it "Summarize what this repo does"
 ```
 
 Target a specific working directory:
+
 ```bash
-uv run main.py --cwd /path/to/project "Find and fix the failing test"
+code-it --cwd /path/to/project "Find and fix the failing test"
+```
+
+Update saved credentials later:
+
+```bash
+code-it --configure
 ```
 
 Inside an interactive session:
-```
+
+```text
+[user]> /setup                  # update saved API credentials
 [user]> /tools                  # list available tools
 [user]> /mcp                    # list connected MCP servers
 [user]> /approval auto-edit     # change the approval policy
@@ -103,21 +85,26 @@ Inside an interactive session:
 [user]> /exit                   # quit
 ```
 
-## Contribution Guidelines
+## Project Config
 
-1. Fork the repo and create a feature branch off `main`: `git checkout -b feature/your-feature`.
-2. Keep the codebase's existing style: type-hinted Python, `pydantic` models for config/data, and small, single-responsibility modules under `agent/`, `tools/`, `context/`, `safety/`, `hooks/`, etc.
-3. Add or update tests where relevant (`scripts/` currently holds test/dev utilities) and make sure the CLI still runs (`uv run main.py`) before submitting.
-4. Use clear, descriptive commit messages.
-5. Open a pull request against `main` describing what changed and why; link any related issues.
-6. Be respectful and constructive in code review — small, focused PRs are easier to merge than large ones.
+Project-level overrides still live in `.ai-agent/config.toml`.
+
+You can also add:
+
+- `AGENT.MD` for project-specific developer instructions
+- `.ai-agent/skills/<skill-name>/SKILL.md` for reusable skills
+- `.ai-agent/tools/*.py` for custom tools
+
+## Publish Checklist
+
+1. Bump `version` in `pyproject.toml`.
+2. Run tests.
+3. Build the wheel and sdist.
+4. Test-install the wheel in a fresh virtual environment.
+5. Upload to TestPyPI.
+6. Verify `code-it --configure` and `code-it` both work.
+7. Publish to PyPI.
 
 ## License
 
 Distributed under the [MIT License](LICENSE).
-
-## Contact
-
-- **Maintainer:** [nick211908](https://github.com/nick211908)
-- **Issues / bug reports:** [github.com/nick211908/coding-agent/issues](https://github.com/nick211908/coding-agent/issues)
-- **Repository:** [github.com/nick211908/coding-agent](https://github.com/nick211908/coding-agent)

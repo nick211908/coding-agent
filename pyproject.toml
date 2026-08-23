@@ -1,17 +1,68 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "code-it"
 version = "0.1.0"
-description = "Add your description here"
+description = "A terminal-based OpenAI-compatible coding agent with tools, approvals, MCP, and session persistence."
 readme = "README.md"
 requires-python = ">=3.13"
+license = "MIT"
+authors = [
+  { name = "nick211908" },
+]
+keywords = ["agent", "cli", "coding", "openai", "mcp"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+  "Topic :: Utilities",
+]
 dependencies = [
-    "click>=8.4.2",
-    "ddgs>=9.14.4",
-    "fastmcp>=3.4.2",
-    "openai>=2.44.0",
-    "platformdirs>=4.10.0",
-    "python-dotenv>=1.1.1",
-    "pydantic>=2.13.4",
-    "tiktoken>=0.13.0",
-    "tomli>=2.4.1",
+  "click>=8.4.2",
+  "ddgs>=9.14.4",
+  "fastmcp>=3.4.2",
+  "httpx>=0.28.1",
+  "openai>=2.44.0",
+  "platformdirs>=4.10.0",
+  "pydantic>=2.13.4",
+  "python-dotenv>=1.1.1",
+  "rich>=14.2.0",
+  "tiktoken>=0.13.0",
+  "tomli>=2.4.1; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pylint>=4.0.6",
+]
+
+[project.scripts]
+code-it = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/nick211908/coding-agent"
+Issues = "https://github.com/nick211908/coding-agent/issues"
+Repository = "https://github.com/nick211908/coding-agent"
+
+[tool.setuptools]
+py-modules = ["main"]
+packages = [
+  "agent",
+  "client",
+  "config",
+  "context",
+  "hooks",
+  "prompts",
+  "safety",
+  "skills",
+  "tools",
+  "tools.builtin",
+  "tools.mcp",
+  "ui",
+  "utils",
 ]
