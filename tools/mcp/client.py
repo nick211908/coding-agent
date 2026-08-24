@@ -4,8 +4,16 @@ import os
 from pathlib import Path
 from typing import Any
 from config.config import MCPServerConfig
-from fastmcp import Client
-from fastmcp.client.transports import SSETransport, StdioTransport
+
+try:
+    from fastmcp import Client
+    from fastmcp.client.transports import SSETransport, StdioTransport
+    FASTMCP_IMPORT_ERROR: ImportError | None = None
+except ImportError as error:
+    Client = Any  # type: ignore[assignment]
+    SSETransport = Any  # type: ignore[assignment]
+    StdioTransport = Any  # type: ignore[assignment]
+    FASTMCP_IMPORT_ERROR = error
 
 
 class MCPServerStatus(str, Enum):
@@ -44,6 +52,13 @@ class MCPClient:
         return list(self._tools.values())
 
     def _create_transport(self) -> StdioTransport | SSETransport:
+        if FASTMCP_IMPORT_ERROR is not None:
+            raise RuntimeError(
+                "FastMCP client support is unavailable. Reinstall with "
+                "`uv tool install --reinstall --editable <path>` or ensure "
+                "`fastmcp` / `fastmcp-slim[client]` is installed correctly."
+            ) from FASTMCP_IMPORT_ERROR
+
         if self.config.command:
             env = os.environ.copy()
             env.update(self.config.env)

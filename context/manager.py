@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from typing import Any
 from client.response import TokenUsage
 from config.config import Config
@@ -28,7 +29,14 @@ class MessageItem:
         if self.tool_calls:
             result["tool_calls"] = self.tool_calls
 
-        if self.content:
+        # `content` is required by the API for tool messages and for assistant
+        # messages that carry no tool_calls. A quiet shell command returns "",
+        # and dropping the field here produces a message the API rejects, which
+        # then poisons every subsequent request in the session.
+        requires_content = self.role == "tool" or (
+            self.role == "assistant" and not self.tool_calls
+        )
+        if self.content or requires_content:
             result["content"] = self.content
 
         return result
@@ -160,9 +168,26 @@ class ContextManager:
 
     def needs_compression(self) -> bool:
         context_limit = self.config.model.context_window
-        current_tokens = self._latest_usage.total_tokens
+        current_tokens = self.estimate_context_tokens()
 
         return current_tokens > (context_limit * 0.8)
+
+    def estimate_context_tokens(self) -> int:
+        total_tokens = 0
+
+        system_prompt = self._build_system_prompt()
+        if system_prompt:
+            total_tokens += count_tokens(system_prompt, self._model_name)
+
+        for item in self._messages:
+            total_tokens += self._estimate_message_tokens(item)
+
+        return total_tokens
+
+    def _estimate_message_tokens(self, item: MessageItem) -> int:
+        payload = item.to_dict()
+        serialized = json.dumps(payload, ensure_ascii=False)
+        return count_tokens(serialized, self._model_name)
 
     def set_latest_usage(self, usage: TokenUsage):
         self._latest_usage = usage
@@ -171,54 +196,27 @@ class ContextManager:
         self.total_usage += usage
 
     def replace_with_summary(self, summary: str) -> None:
-        self._messages = []
-
         continuation_content = f"""# Context Restoration (Previous Session Compacted)
 
-        The previous conversation was compacted due to context length limits. Below is a detailed summary of the work done so far. 
+The previous conversation was compacted due to context length limits. Below is a detailed summary of the work done so far.
 
-        **CRITICAL: Actions listed under "COMPLETED ACTIONS" are already done. DO NOT repeat them.**
+Actions listed under "COMPLETED ACTIONS" are already done. Do not repeat them.
 
-        ---
+---
 
-        {summary}
+{summary}
 
-        ---
+---
 
-        Resume work from where we left off. Focus ONLY on the remaining tasks."""
+Resume work from where we left off. Focus only on the remaining tasks and treat this summary as authoritative context."""
 
         summary_item = MessageItem(
             role="user",
             content=continuation_content,
             token_count=count_tokens(continuation_content, self._model_name),
         )
-        self._messages.append(summary_item)
-
-        ack_content = """I've reviewed the context from the previous session. I understand:
-- The original goal and what was requested
-- Which actions are ALREADY COMPLETED (I will NOT repeat these)
-- The current state of the project
-- What still needs to be done
-
-I'll continue with the REMAINING tasks only, starting from where we left off."""
-        ack_item = MessageItem(
-            role="assistant",
-            content=ack_content,
-            token_count=count_tokens(ack_content, self._model_name),
-        )
-        self._messages.append(ack_item)
-
-        continue_content = (
-            "Continue with the REMAINING work only. Do NOT repeat any completed actions. "
-            "Proceed with the next step as described in the context above."
-        )
-
-        continue_item = MessageItem(
-            role="user",
-            content=continue_content,
-            token_count=count_tokens(continue_content, self._model_name),
-        )
-        self._messages.append(continue_item)
+        # Commit only after the replacement message is fully built.
+        self._messages = [summary_item]
 
     def prune_tool_outputs(self) -> int:
         user_message_count = sum(1 for msg in self._messages if msg.role == "user")

@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any, AsyncGenerator
+import httpx
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
 from client.response import (
@@ -23,8 +24,15 @@ class LLMClient:
     def get_client(self) -> AsyncOpenAI:
         if self._client is None:
             self._client = AsyncOpenAI(
-                api_key=self.config.api_key,  # 
-                base_url=self.config.base_url,  # 
+                api_key=self.config.api_key,
+                base_url=self.config.base_url,
+                # Fail fast on a stalled endpoint instead of hanging on the SDK
+                # default (~10 min). `read` bounds silence between streamed chunks
+                # (and time-to-first-token); `connect` bounds the initial connect.
+                timeout=httpx.Timeout(90.0, connect=15.0),
+                # We run our own retry loop below; leaving the SDK's default (2)
+                # would multiply every attempt and compound stalls.
+                max_retries=0,
             )
         return self._client
 
@@ -155,35 +163,40 @@ class LLMClient:
 
                     if idx not in tool_calls:
                         tool_calls[idx] = {
-                            "id": tool_call_delta.id or "",
+                            "id": "",
                             "name": "",
                             "arguments": "",
+                            "started": False,
                         }
 
-                        if tool_call_delta.function:
-                            if tool_call_delta.function.name:
-                                tool_calls[idx]["name"] = tool_call_delta.function.name
-                                yield StreamEvent(
-                                    type=StreamEventType.TOOL_CALL_START,
-                                    tool_call_delta=ToolCallDelta(
-                                        call_id=tool_calls[idx]["id"],
-                                        name=tool_call_delta.function.name,
-                                    ),
-                                )
+                    tool_call = tool_calls[idx]
+                    if tool_call_delta.id:
+                        tool_call["id"] = tool_call_delta.id
 
-                        if tool_call_delta.function.arguments:
-                            tool_calls[idx][
-                                "arguments"
-                            ] += tool_call_delta.function.arguments
+                    function = tool_call_delta.function
+                    if function and function.name:
+                        tool_call["name"] = function.name
 
-                            yield StreamEvent(
-                                type=StreamEventType.TOOL_CALL_DELTA,
-                                tool_call_delta=ToolCallDelta(
-                                    call_id=tool_calls[idx]["id"],
-                                    name=tool_call_delta.function.name,
-                                    arguments_delta=tool_call_delta.function.arguments,
-                                ),
-                            )
+                    if tool_call["name"] and not tool_call["started"]:
+                        tool_call["started"] = True
+                        yield StreamEvent(
+                            type=StreamEventType.TOOL_CALL_START,
+                            tool_call_delta=ToolCallDelta(
+                                call_id=tool_call["id"],
+                                name=tool_call["name"],
+                            ),
+                        )
+
+                    if function and function.arguments:
+                        tool_call["arguments"] += function.arguments
+                        yield StreamEvent(
+                            type=StreamEventType.TOOL_CALL_DELTA,
+                            tool_call_delta=ToolCallDelta(
+                                call_id=tool_call["id"],
+                                name=tool_call["name"],
+                                arguments_delta=function.arguments,
+                            ),
+                        )
 
         for idx, tc in tool_calls.items():
             yield StreamEvent(

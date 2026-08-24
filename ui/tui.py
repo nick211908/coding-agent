@@ -120,8 +120,9 @@ class TUI:
                     line_count = len(value.splitlines()) or 0
                     byte_count = len(value.encode("utf-8", errors="replace"))
                     value = f"<{line_count} lines • {byte_count} bytes>"
-
-            if isinstance(value, bool):
+            elif not isinstance(value, str):
+                # Rich cannot render non-string types (int, list, dict, bool, etc.)
+                # Convert everything to a string for safe display.
                 value = str(value)
 
             table.add_row(key, value)
@@ -138,12 +139,20 @@ class TUI:
         self._tool_args_by_call_id[call_id] = arguments
         border_style = f"tool.{tool_kind}" if tool_kind else "tool"
 
+        tag = ""
+        if name in ("read_file", "write_file", "edit"):
+            tag = "[bold yellow] 📁 FILE IO[/bold yellow]"
+        elif name == "shell":
+            tag = "[bold magenta] 💻 SHELL[/bold magenta]"
+        
         title = Text.assemble(
             ("⏺ ", "muted"),
             (name, "tool"),
             ("  ", "muted"),
             (f"#{call_id[:8]}", "muted"),
         )
+        if tag:
+            title.append(Text.from_markup(tag))
 
         display_args = dict(arguments)
         for key in ("path", "cwd"):
@@ -619,3 +628,42 @@ class TUI:
 - Some operations require approval (can be configured)
 """
         self.console.print(Markdown(help_text))
+
+    def print_current_state(self) -> None:
+        try:
+            from tools.builtin.tasks import TaskStore
+            store = TaskStore(self.cwd) if self.cwd else None
+            if not store:
+                return
+            tasks = store.list_all()
+            in_progress = [t for t in tasks if t.status == "in_progress"]
+            
+            if not in_progress:
+                return
+            
+            for task in in_progress:
+                lines = []
+                lines.append(f"[bold]{task.subject}[/bold] [dim]({task.id})[/dim]")
+                if task.description:
+                    lines.append(f"[dim]{task.description}[/dim]")
+                lines.append("")
+                
+                if task.todos:
+                    lines.append("[bold]Todos:[/bold]")
+                    for todo in task.todos:
+                        checkbox = "[green]✓[/green]" if todo.get("completed") else "[red]![/red]"
+                        lines.append(f"  {checkbox} {todo.get('content')} [dim]({todo.get('id')})[/dim]")
+                else:
+                    lines.append("[dim]No todos yet.[/dim]")
+                
+                panel = Panel(
+                    "\n".join(lines),
+                    title="[bold blue]Active Task[/bold blue]",
+                    title_align="left",
+                    border_style="blue",
+                    box=box.ROUNDED,
+                    padding=(1, 2)
+                )
+                self.console.print(panel)
+        except Exception:
+            pass

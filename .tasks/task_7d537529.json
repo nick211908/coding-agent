@@ -1,0 +1,20 @@
+{
+  "id": "task_7d537529",
+  "subject": "Refactor Database Logic",
+  "description": "Move all SQL statements to db.py",
+  "status": "in_progress",
+  "owner": null,
+  "blockedBy": [],
+  "todos": [
+    {
+      "id": "td_1",
+      "content": "Create db.py",
+      "completed": true
+    },
+    {
+      "id": "td_2",
+      "content": "Move inserts",
+      "completed": false
+    }
+  ]
+}

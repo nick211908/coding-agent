@@ -5,7 +5,16 @@ from tools.builtin.list_dir import ListDirTool
 from tools.builtin.memory import MemoryTool
 from tools.builtin.read_file import ReadFileTool
 from tools.builtin.shell import ShellTool
-from tools.builtin.todo import TodosTool
+from tools.builtin.tasks import (
+    ClaimTaskTool,
+    CompleteTaskTool,
+    CreateTaskTool,
+    GetTaskTool,
+    ListTasksTool,
+    UpdateTaskTool,
+    AddTodoTool,
+    CompleteTodoTool,
+)
 from tools.builtin.web_fetch import WebFetchTool
 from tools.builtin.web_search import WebSearchTool
 from tools.builtin.write_file import WriteFileTool
@@ -20,7 +29,14 @@ __all__ = [
     "GlobTool",
     "WebSearchTool",
     "WebFetchTool",
-    "TodosTool",
+    "CreateTaskTool",
+    "UpdateTaskTool",
+    "ClaimTaskTool",
+    "CompleteTaskTool",
+    "GetTaskTool",
+    "ListTasksTool",
+    "AddTodoTool",
+    "CompleteTodoTool",
     "MemoryTool",
 ]
 
@@ -36,6 +52,13 @@ def get_all_builtin_tools() -> list[type]:
         GlobTool,
         WebSearchTool,
         WebFetchTool,
-        TodosTool,
+        CreateTaskTool,
+        UpdateTaskTool,
+        ClaimTaskTool,
+        CompleteTaskTool,
+        GetTaskTool,
+        ListTasksTool,
+        AddTodoTool,
+        CompleteTodoTool,
         MemoryTool,
     ]

@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ModelConfig(BaseModel):
-    name: str = "qwen/qwen3-32b"
+    name: str = "openai/gpt-oss-120b"
     temperature: float = Field(default=1, ge=0.0, le=2.0)
-    context_window: int = 256_000
+    context_window: int = 512_000
 
 
 class ShellEnvironmentPolicy(BaseModel):

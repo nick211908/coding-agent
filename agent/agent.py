@@ -67,6 +67,9 @@ class Agent:
 
             # check for context overflow
             if self.session.context_manager.needs_compression():
+                yield AgentEvent.compaction_start(
+                    self.session.context_manager.message_count
+                )
                 summary, usage = await self.session.chat_compactor.compress(
                     self.session.context_manager
                 )
@@ -75,6 +78,15 @@ class Agent:
                     self.session.context_manager.replace_with_summary(summary)
                     self.session.context_manager.set_latest_usage(usage)
                     self.session.context_manager.add_usage(usage)
+                    yield AgentEvent.compaction_complete(
+                        self.session.context_manager.message_count,
+                        usage,
+                    )
+                else:
+                    yield AgentEvent.compaction_error(
+                        self.session.chat_compactor.last_error
+                        or "Compaction failed."
+                    )
 
             tool_schemas = self.session.tool_registry.get_schemas() if enable_tools else []
 

@@ -1,16 +1,16 @@
 import asyncio
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
 
 import click
 
-from agent.agent import Agent
-from agent.events import AgentEventType
-from agent.persistence import PersistenceManager, SessionSnapshot
-from agent.session import Session
 from config.config import ApprovalPolicy, Config
 from config.loader import get_system_config_path, load_config, save_system_config
 from ui.tui import TUI, get_console
+
+if TYPE_CHECKING:
+    from agent.agent import Agent
 
 console = get_console()
 
@@ -42,16 +42,24 @@ def configure_credentials_interactively(config: Config | None = None) -> Config:
 
 class CLI:
     def __init__(self, config: Config):
+        from agent.persistence import PersistenceManager, SessionSnapshot
+
         self.agent: Agent | None = None
         self.config = config
         self.tui = TUI(config, console)
+        self._persistence_manager_cls = PersistenceManager
+        self._session_snapshot_cls = SessionSnapshot
 
     async def run_single(self, message: str) -> str | None:
+        from agent.agent import Agent
+
         async with Agent(self.config) as agent:
             self.agent = agent
             return await self._process_message(message)
 
     async def run_interactive(self) -> str | None:
+        from agent.agent import Agent
+
         self.tui.print_welcome(
             "code-it",
             lines=[
@@ -69,6 +77,7 @@ class CLI:
 
             while True:
                 try:
+                    self.tui.print_current_state()
                     user_input = console.input("\n[user]>[/user] ").strip()
                     if not user_input:
                         continue
@@ -94,6 +103,8 @@ class CLI:
         return tool.kind.value
 
     async def _process_message(self, message: str) -> str | None:
+        from agent.events import AgentEventType
+
         if not self.agent:
             return None
 
@@ -115,6 +126,13 @@ class CLI:
             elif event.type == AgentEventType.AGENT_ERROR:
                 error = event.data.get("error", "Unknown error")
                 console.print(f"\n[error]Error: {error}[/error]")
+            elif event.type == AgentEventType.COMPACTION_START:
+                console.print("\n[dim]Compacting conversation context...[/dim]")
+            elif event.type == AgentEventType.COMPACTION_COMPLETE:
+                console.print("[success]Context compacted.[/success]")
+            elif event.type == AgentEventType.COMPACTION_ERROR:
+                error = event.data.get("error", "Compaction failed")
+                console.print(f"\n[error]Context compaction failed: {error}[/error]")
             elif event.type == AgentEventType.TOOL_CALL_START:
                 tool_name = event.data.get("name", "unknown")
                 tool_kind = self._get_tool_kind(tool_name)
@@ -210,8 +228,8 @@ class CLI:
                     f"  • {server['name']}: [{status_color}]{status}[/{status_color}] ({server['tools']} tools)"
                 )
         elif cmd_name == "/save":
-            persistence_manager = PersistenceManager()
-            session_snapshot = SessionSnapshot(
+            persistence_manager = self._persistence_manager_cls()
+            session_snapshot = self._session_snapshot_cls(
                 session_id=self.agent.session.session_id,
                 created_at=self.agent.session.created_at,
                 updated_at=self.agent.session.updated_at,
@@ -224,7 +242,7 @@ class CLI:
                 f"[success]Session saved: {self.agent.session.session_id}[/success]"
             )
         elif cmd_name == "/sessions":
-            persistence_manager = PersistenceManager()
+            persistence_manager = self._persistence_manager_cls()
             sessions = persistence_manager.list_sessions()
             console.print("\n[bold]Saved Sessions[/bold]")
             for saved_session in sessions:
@@ -235,7 +253,9 @@ class CLI:
             if not cmd_args:
                 console.print("[error]Usage: /resume <session_id> [/error]")
             else:
-                persistence_manager = PersistenceManager()
+                from agent.session import Session
+
+                persistence_manager = self._persistence_manager_cls()
                 snapshot = persistence_manager.load_session(cmd_args)
                 if not snapshot:
                     console.print("[error]Session does not exist [/error]")
@@ -274,8 +294,8 @@ class CLI:
                         f"[success]Resumed session: {session.session_id}[/success]"
                     )
         elif cmd_name == "/checkpoint":
-            persistence_manager = PersistenceManager()
-            session_snapshot = SessionSnapshot(
+            persistence_manager = self._persistence_manager_cls()
+            session_snapshot = self._session_snapshot_cls(
                 session_id=self.agent.session.session_id,
                 created_at=self.agent.session.created_at,
                 updated_at=self.agent.session.updated_at,
@@ -289,7 +309,9 @@ class CLI:
             if not cmd_args:
                 console.print("[error]Usage: /restore <checkpoint_id> [/error]")
             else:
-                persistence_manager = PersistenceManager()
+                from agent.session import Session
+
+                persistence_manager = self._persistence_manager_cls()
                 snapshot = persistence_manager.load_checkpoint(cmd_args)
                 if not snapshot:
                     console.print("[error]Checkpoint does not exist [/error]")

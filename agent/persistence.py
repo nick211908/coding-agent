@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import os
+import tempfile
 from typing import Any
 from client.response import TokenUsage
 from config.loader import get_data_dir
@@ -51,11 +52,28 @@ class PersistenceManager:
 
     def save_session(self, snapshot: SessionSnapshot) -> None:
         file_path = self.sessions_dir / f"{snapshot.session_id}.json"
+        self._atomic_save(file_path, snapshot)
 
-        with open(file_path, "w", encoding="utf-8") as fp:
-            json.dump(snapshot.to_dict(), fp, indent=2)
-
-        os.chmod(file_path, 0o600)
+    def _atomic_save(self, file_path, snapshot: SessionSnapshot) -> None:
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{file_path.name}.",
+            suffix=".tmp",
+            dir=file_path.parent,
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                json.dump(snapshot.to_dict(), fp, indent=2)
+                fp.flush()
+                os.fsync(fp.fileno())
+            os.chmod(temporary_path, 0o600)
+            os.replace(temporary_path, file_path)
+        except Exception:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+            raise
 
     def load_session(self, session_id: str) -> SessionSnapshot | None:
         file_path = self.sessions_dir / f"{session_id}.json"
@@ -90,9 +108,7 @@ class PersistenceManager:
         checkpoint_id = f"{snapshot.session_id}_{timestamp}"
         file_path = self.checkpoints_dir / f"{checkpoint_id}.json"
 
-        with open(file_path, "w", encoding="utf-8") as fp:
-            json.dump(snapshot.to_dict(), fp, indent=2)
-        os.chmod(file_path, 0o600)
+        self._atomic_save(file_path, snapshot)
         return checkpoint_id
 
     def load_checkpoint(self, checkpoint_id: str) -> SessionSnapshot | None:

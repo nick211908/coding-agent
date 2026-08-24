@@ -4,18 +4,18 @@ A terminal-based, OpenAI-compatible coding agent that reads, edits, and runs cod
 
 ## Install
 
-Prerequisites: Python 3.13+.
+Prerequisites: Python 3.13+ and `uv`.
 
-Install from the repo while developing:
+Install dependencies into the project-managed environment:
 
 ```bash
-pip install -e .
+uv sync
 ```
 
 Build distributable artifacts:
 
 ```bash
-python -m build
+uv build
 ```
 
 This creates:
@@ -25,10 +25,10 @@ This creates:
 
 ## First Run
 
-After installation, use the console entry point:
+After syncing the project environment, configure credentials:
 
 ```bash
-code-it --configure
+uv run code-it --configure
 ```
 
 This prompts for:
@@ -49,25 +49,25 @@ You can still use a project-local `.env` file or `API_KEY` and `BASE_URL` enviro
 Run interactively:
 
 ```bash
-code-it
+uv run code-it
 ```
 
 Run a single prompt:
 
 ```bash
-code-it "Summarize what this repo does"
+uv run code-it "Summarize what this repo does"
 ```
 
 Target a specific working directory:
 
 ```bash
-code-it --cwd /path/to/project "Find and fix the failing test"
+uv run code-it --cwd /path/to/project "Find and fix the failing test"
 ```
 
 Update saved credentials later:
 
 ```bash
-code-it --configure
+uv run code-it --configure
 ```
 
 Inside an interactive session:
@@ -99,11 +99,62 @@ You can also add:
 
 1. Bump `version` in `pyproject.toml`.
 2. Run tests.
-3. Build the wheel and sdist.
-4. Test-install the wheel in a fresh virtual environment.
+3. Build the wheel and sdist with `uv build --no-sources`.
+4. Test the CLI with `uv run code-it --configure`.
 5. Upload to TestPyPI.
-6. Verify `code-it --configure` and `code-it` both work.
+6. Verify both `uv run code-it --configure` and `uv run code-it` work.
 7. Publish to PyPI.
+
+## Publish With uv
+
+Recommended local release flow:
+
+```bash
+uv sync --frozen
+uv run python -m unittest tests.test_config_loader tests.test_skills
+uv build --no-sources
+uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
+uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+```
+
+TestPyPI publish:
+
+```bash
+$env:UV_PUBLISH_TOKEN="pypi-***"
+uv publish --publish-url https://test.pypi.org/legacy/
+```
+
+PyPI publish:
+
+```bash
+$env:UV_PUBLISH_TOKEN="pypi-***"
+uv publish
+```
+
+For the first release, verify the package name on PyPI before publishing. If `code-it` is already taken, rename `project.name` in `pyproject.toml` before uploading.
+
+## Trusted Publishing
+
+A GitHub Actions release workflow is included at `.github/workflows/publish.yml`.
+
+To use it:
+
+1. Create the project on PyPI.
+2. In the PyPI project settings, add a Trusted Publisher for this GitHub repository.
+3. In GitHub, create an environment named `pypi`.
+4. Push a version tag like `v0.1.0`.
+
+That workflow will:
+
+- sync with `uv`
+- run the unit tests
+- build the wheel and source distribution
+- smoke-test both artifacts
+- publish with `uv publish`
+
+## Why `uv` Instead of `pip install -e .`
+
+This repository already carries a `uv.lock`, so `uv sync` is the safer default for development. It avoids polluting a shared Python installation and reduces resolver conflicts with unrelated packages already installed on your machine.
 
 ## License
 

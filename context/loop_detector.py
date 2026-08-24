@@ -4,8 +4,8 @@ from typing import Any
 
 class LoopDetector:
     def __init__(self):
-        self.max_exact_repeats = 3
-        self.max_cycle_length = 3
+        self.max_exact_repeats = 10
+        self.max_cycle_length = 10
         self._history: deque[str] = deque(maxlen=20)
 
     def record_action(self, action_type: str, **details: Any):

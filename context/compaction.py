@@ -8,6 +8,7 @@ from prompts.system import get_compression_prompt
 class ChatCompactor:
     def __init__(self, client: LLMClient):
         self.client = client
+        self.last_error: str | None = None
 
     def _format_history_for_compaction(self, messages: list[dict[str, Any]]) -> str:
         output = ["Here is the conversation that needs to be continue: \n"]
@@ -57,6 +58,7 @@ class ChatCompactor:
     async def compress(
         self, context_manager: ContextManager
     ) -> tuple[str | None, TokenUsage | None]:
+        self.last_error = None
         messages = context_manager.get_messages()
 
         if len(messages) < 3:
@@ -85,8 +87,10 @@ class ChatCompactor:
                     summary += event.text_delta.content
 
             if not summary or not usage:
+                self.last_error = "Compaction returned no summary."
                 return None, None
 
             return summary, usage
-        except Exception:
+        except Exception as error:
+            self.last_error = str(error) or error.__class__.__name__
             return None, None

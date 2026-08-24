@@ -24,6 +24,11 @@ class AgentEventType(str, Enum):
     TEXT_DELTA = "text_delta"
     TEXT_COMPLETE = "text_complete"
 
+    # Context management
+    COMPACTION_START = "compaction_start"
+    COMPACTION_COMPLETE = "compaction_complete"
+    COMPACTION_ERROR = "compaction_error"
+
 
 @dataclass
 class AgentEvent:
@@ -78,6 +83,32 @@ class AgentEvent:
         return cls(
             type=AgentEventType.TEXT_COMPLETE,
             data={"content": content},
+        )
+
+    @classmethod
+    def compaction_start(cls, message_count: int) -> AgentEvent:
+        return cls(
+            type=AgentEventType.COMPACTION_START,
+            data={"message_count": message_count},
+        )
+
+    @classmethod
+    def compaction_complete(
+        cls, message_count: int, usage: TokenUsage | None = None
+    ) -> AgentEvent:
+        return cls(
+            type=AgentEventType.COMPACTION_COMPLETE,
+            data={
+                "message_count": message_count,
+                "usage": usage.__dict__ if usage else None,
+            },
+        )
+
+    @classmethod
+    def compaction_error(cls, error: str) -> AgentEvent:
+        return cls(
+            type=AgentEventType.COMPACTION_ERROR,
+            data={"error": error},
         )
 
     @classmethod
