@@ -17,6 +17,7 @@ class AgentEventType(str, Enum):
     AGENT_ERROR = "agent_error"
 
     # Tool calls
+    TOOL_CALL_GENERATING = "tool_call_generating"
     TOOL_CALL_START = "tool_call_start"
     TOOL_CALL_COMPLETE = "tool_call_complete"
 
@@ -109,6 +110,16 @@ class AgentEvent:
         return cls(
             type=AgentEventType.COMPACTION_ERROR,
             data={"error": error},
+        )
+
+    @classmethod
+    def tool_call_generating(cls, call_id: str, name: str) -> AgentEvent:
+        return cls(
+            type=AgentEventType.TOOL_CALL_GENERATING,
+            data={
+                "call_id": call_id,
+                "name": name,
+            },
         )
 
     @classmethod

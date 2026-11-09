@@ -21,12 +21,16 @@ def configure_credentials_interactively(config: Config | None = None) -> Config:
     current_base_url = config.base_url or ""
 
     console.print("[bold]Credential Setup[/bold]")
-    api_key = click.prompt("API key", hide_input=True).strip()
-    base_url = click.prompt(
+    raw_api_key = click.prompt("API key", hide_input=True).strip()
+    raw_base_url = click.prompt(
         "Base URL (leave blank for provider default)",
         default=current_base_url,
         show_default=bool(current_base_url),
     ).strip()
+
+    # Strip terminal control characters (e.g. \x17 Ctrl+W)
+    api_key = "".join(c for c in raw_api_key if c >= " " or c in "\t\n\r").strip()
+    base_url = "".join(c for c in raw_base_url if c >= " " or c in "\t\n\r").strip()
 
     save_system_config(
         {
@@ -123,7 +127,7 @@ class CLI:
             console.print(f"[dim]📎 Tagged {len(tagged_files)} file(s): {file_names}[/dim]")
         message = enriched_message
 
-        assistant_streaming = True
+        assistant_streaming = False
         final_response: str | None = None
 
         async for event in self.agent.run(message):
@@ -138,6 +142,12 @@ class CLI:
                 if assistant_streaming:
                     self.tui.end_assistant()
                     assistant_streaming = False
+            elif event.type == AgentEventType.TOOL_CALL_GENERATING:
+                if assistant_streaming:
+                    self.tui.end_assistant()
+                    assistant_streaming = False
+                tool_name = event.data.get("name", "tool")
+                console.print(f"[dim]⚡ Calling [bold cyan]{tool_name}[/bold cyan]...[/dim]")
             elif event.type == AgentEventType.AGENT_ERROR:
                 error = event.data.get("error", "Unknown error")
                 console.print(f"\n[error]Error: {error}[/error]")
@@ -149,6 +159,9 @@ class CLI:
                 error = event.data.get("error", "Compaction failed")
                 console.print(f"\n[error]Context compaction failed: {error}[/error]")
             elif event.type == AgentEventType.TOOL_CALL_START:
+                if assistant_streaming:
+                    self.tui.end_assistant()
+                    assistant_streaming = False
                 tool_name = event.data.get("name", "unknown")
                 tool_kind = self._get_tool_kind(tool_name)
                 self.tui.tool_call_start(
@@ -172,6 +185,10 @@ class CLI:
                     event.data.get("truncated", False),
                     event.data.get("exit_code"),
                 )
+
+        if assistant_streaming:
+            self.tui.end_assistant()
+            assistant_streaming = False
 
         return final_response
 

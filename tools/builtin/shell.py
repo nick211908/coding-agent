@@ -89,7 +89,15 @@ class ShellTool(Tool):
 
         env = self._build_environment()
         if sys.platform == "win32":
-            shell_cmd = ["cmd.exe", "/c", params.command]
+            shell_cmd = [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                params.command,
+            ]
         else:
             shell_cmd = ["/bin/bash", "-c", params.command]
 

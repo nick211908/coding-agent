@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agent.agent import Agent
 from agent.events import AgentEventType
-from client.response import StreamEvent, StreamEventType, TextDelta, ToolCall
+from client.response import StreamEvent, StreamEventType, TextDelta, ToolCall, ToolCallDelta
 from config.config import Config
 
 
@@ -101,3 +101,51 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertEqual(len(error_events), 1)
         self.assertIn("Maximum turns (2) reached", error_events[0].data.get("error", ""))
+
+    async def test_tool_call_start_emits_generating_event(self) -> None:
+        """Verify TOOL_CALL_START emits TOOL_CALL_GENERATING before tool execution."""
+        config = Config(cwd=self.cwd, max_turns=5)
+        agent = Agent(config)
+        await agent.session.initialize()
+
+        turn_events = [
+            StreamEvent(
+                type=StreamEventType.TEXT_DELTA,
+                text_delta=TextDelta(content="I am writing a file"),
+            ),
+            StreamEvent(
+                type=StreamEventType.TOOL_CALL_START,
+                tool_call_delta=ToolCallDelta(call_id="call_1", name="write_file"),
+            ),
+            StreamEvent(
+                type=StreamEventType.TOOL_CALL_COMPLETE,
+                tool_call=ToolCall(
+                    name="write_file",
+                    call_id="call_1",
+                    arguments={"path": "out.txt", "content": "hello world"},
+                ),
+            ),
+            StreamEvent(type=StreamEventType.MESSAGE_COMPLETE),
+        ]
+
+        async def fake_stream(*args, **kwargs):
+            for ev in turn_events:
+                yield ev
+
+        agent.session.client.chat_completion = fake_stream
+
+        event_types = []
+        async for event in agent._agentic_loop("create out.txt"):
+            event_types.append(event.type)
+
+        self.assertIn(AgentEventType.TEXT_COMPLETE, event_types)
+        self.assertIn(AgentEventType.TOOL_CALL_GENERATING, event_types)
+        self.assertIn(AgentEventType.TOOL_CALL_START, event_types)
+        self.assertIn(AgentEventType.TOOL_CALL_COMPLETE, event_types)
+
+        # TEXT_COMPLETE and TOOL_CALL_GENERATING should come before TOOL_CALL_START
+        tc_idx = event_types.index(AgentEventType.TEXT_COMPLETE)
+        gen_idx = event_types.index(AgentEventType.TOOL_CALL_GENERATING)
+        start_idx = event_types.index(AgentEventType.TOOL_CALL_START)
+        self.assertLess(tc_idx, start_idx)
+        self.assertLess(gen_idx, start_idx)

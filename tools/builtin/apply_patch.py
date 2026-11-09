@@ -16,6 +16,7 @@ from tools.base import (
     Tool,
 )
 from utils.paths import resolve_path, ensure_parent_directory
+from utils.text import clean_created_content
 
 
 class PatchAction(Enum):
@@ -86,7 +87,9 @@ class ApplyPatchTool(Tool):
         "Also supports:\n"
         "*** Create File: path - creates new file with content after it\n"
         "*** Delete File: path - deletes the file\n"
-        "*** Rename File: old -> new - renames/moves a file"
+        "*** Rename File: old -> new - renames/moves a file\n\n"
+        "Important: When creating a file with '*** Create File: <path>', write the raw file content directly. "
+        "Do NOT include diff markers like '@@' or '+' prefixes."
     )
     kind = ToolKind.WRITE
     schema = ApplyPatchParams
@@ -144,7 +147,7 @@ class ApplyPatchTool(Tool):
                     PatchOperation(
                         action=PatchAction.CREATE,
                         path=path,
-                        content=content,
+                        content=clean_created_content(content),
                     )
                 )
 
@@ -181,6 +184,34 @@ class ApplyPatchTool(Tool):
         start: int,
         path: Path,
     ) -> tuple[PatchOperation | None, int, str | None]:
+        """Parse an update operation using SEARCH/REPLACE or unified diff hunk."""
+        scan_i = start
+        has_search_block = False
+        while scan_i < len(lines):
+            stripped = lines[scan_i].strip()
+            if (
+                self.UPDATE_FILE.match(stripped)
+                or self.CREATE_FILE.match(stripped)
+                or self.DELETE_FILE.match(stripped)
+                or self.RENAME_FILE.match(stripped)
+                or self.PATCH_END.match(stripped)
+            ):
+                break
+            if self.SEARCH_START.match(stripped):
+                has_search_block = True
+                break
+            scan_i += 1
+
+        if has_search_block:
+            return self._parse_search_replace_update(lines, start, path)
+        return self._parse_diff_hunk_update(lines, start, path)
+
+    def _parse_search_replace_update(
+        self,
+        lines: list[str],
+        start: int,
+        path: Path,
+    ) -> tuple[PatchOperation | None, int, str | None]:
         """Parse an update operation's search/replace block."""
         i = start
 
@@ -205,6 +236,72 @@ class ApplyPatchTool(Tool):
         if i >= len(lines):
             return None, i, f"Missing >>>>>>> REPLACE for {path}"
         i += 1
+
+        search_content = "\n".join(search_lines)
+        replace_content = "\n".join(replace_lines)
+
+        return (
+            PatchOperation(
+                action=PatchAction.UPDATE,
+                path=path,
+                content=f"{search_content}\x00{replace_content}",
+            ),
+            i,
+            None,
+        )
+
+    def _parse_diff_hunk_update(
+        self,
+        lines: list[str],
+        start: int,
+        path: Path,
+    ) -> tuple[PatchOperation | None, int, str | None]:
+        """Parse unified diff style hunk with @@, +, -."""
+        i = start
+        search_lines = []
+        replace_lines = []
+        has_diff_markers = False
+
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            if (
+                self.UPDATE_FILE.match(stripped)
+                or self.CREATE_FILE.match(stripped)
+                or self.DELETE_FILE.match(stripped)
+                or self.RENAME_FILE.match(stripped)
+                or self.PATCH_END.match(stripped)
+            ):
+                break
+
+            if stripped.startswith("@@"):
+                has_diff_markers = True
+                i += 1
+                continue
+
+            if line.startswith("+"):
+                has_diff_markers = True
+                replace_lines.append(line[1:])
+            elif line.startswith("-"):
+                has_diff_markers = True
+                search_lines.append(line[1:])
+            elif line.startswith(" "):
+                search_lines.append(line[1:])
+                replace_lines.append(line[1:])
+            else:
+                search_lines.append(line)
+                replace_lines.append(line)
+
+            i += 1
+
+        if not has_diff_markers:
+            return None, i, f"Missing <<<<<<< SEARCH or unified diff hunks (@@, +, -) for {path}"
+
+        while search_lines and not search_lines[-1].strip():
+            search_lines.pop()
+        while replace_lines and not replace_lines[-1].strip():
+            replace_lines.pop()
 
         search_content = "\n".join(search_lines)
         replace_content = "\n".join(replace_lines)
@@ -334,9 +431,11 @@ class ApplyPatchTool(Tool):
         if op.path.exists():
             return f"SKIP: {op.path} already exists"
 
+        cleaned_content = clean_created_content(op.content or "")
+
         if not dry_run:
             ensure_parent_directory(op.path)
-            op.path.write_text(op.content or "", encoding="utf-8")
+            op.path.write_text(cleaned_content, encoding="utf-8")
 
         return f"Created: {op.path}"
 
@@ -355,9 +454,18 @@ class ApplyPatchTool(Tool):
             return f"ERROR: Failed to read {op.path}"
 
         if search not in content:
+            normalized_content = content.replace("\r\n", "\n")
+            normalized_search = search.replace("\r\n", "\n")
+            if normalized_search in normalized_content:
+                new_content = normalized_content.replace(
+                    normalized_search, replace.replace("\r\n", "\n"), 1
+                )
+                if not dry_run:
+                    op.path.write_text(new_content, encoding="utf-8")
+                return f"Updated: {op.path}"
             return f"ERROR: Search content not found in {op.path}"
 
-        new_content = content.replace(search, replace)
+        new_content = content.replace(search, replace, 1)
 
         if not dry_run:
             op.path.write_text(new_content, encoding="utf-8")

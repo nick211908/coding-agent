@@ -9,6 +9,7 @@ from tools.base import (
 from pydantic import BaseModel, Field
 
 from utils.paths import ensure_parent_directory, resolve_path
+from utils.text import clean_created_content
 
 
 class WriteFileParams(BaseModel):
@@ -40,6 +41,9 @@ class WriteFileTool(Tool):
         path = resolve_path(invocation.cwd, params.path)
 
         is_new_file = not path.exists()
+        content = params.content
+        if is_new_file or content.lstrip().startswith("@@"):
+            content = clean_created_content(content)
 
         old_content = ""
         if not is_new_file:
@@ -51,7 +55,7 @@ class WriteFileTool(Tool):
         diff = FileDiff(
             path=path,
             old_content=old_content,
-            new_content=params.content,
+            new_content=content,
             is_new_file=is_new_file,
         )
 
@@ -71,8 +75,11 @@ class WriteFileTool(Tool):
         path = resolve_path(invocation.cwd, params.path)
 
         is_new_file = not path.exists()
-        old_content = ""
+        content_to_write = params.content
+        if is_new_file or content_to_write.lstrip().startswith("@@"):
+            content_to_write = clean_created_content(content_to_write)
 
+        old_content = ""
         if not is_new_file:
             try:
                 old_content = path.read_text(encoding="utf-8")
@@ -87,24 +94,24 @@ class WriteFileTool(Tool):
                     f"Parent directory does not exist: {path.parent}"
                 )
 
-            path.write_text(params.content, encoding="utf-8")
+            path.write_text(content_to_write, encoding="utf-8")
 
             action = "Created" if is_new_file else "Updated"
-            line_count = len(params.content.splitlines())
+            line_count = len(content_to_write.splitlines())
 
             return ToolResult.success_result(
                 f"{action} {path} {line_count} lines",
                 diff=FileDiff(
                     path=path,
                     old_content=old_content,
-                    new_content=params.content,
+                    new_content=content_to_write,
                     is_new_file=is_new_file,
                 ),
                 metadata={
                     "path": str(path),
                     "is_new_file": is_new_file,
                     "lines": line_count,
-                    "bytes": len(params.content.encode("utf-8")),
+                    "bytes": len(content_to_write.encode("utf-8")),
                 },
             )
         except OSError as e:

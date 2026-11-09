@@ -10,6 +10,7 @@ from tools.base import (
 from pydantic import BaseModel, Field
 
 from utils.paths import ensure_parent_directory, resolve_path
+from utils.text import clean_created_content
 
 
 class EditParams(BaseModel):
@@ -51,10 +52,11 @@ class EditTool(Tool):
         is_new_file = not path.exists()
 
         if is_new_file:
+            cleaned_new_string = clean_created_content(params.new_string)
             diff = FileDiff(
                 path=path,
                 old_content="",
-                new_content=params.new_string,
+                new_content=cleaned_new_string,
                 is_new_file=True,
             )
 
@@ -97,17 +99,18 @@ class EditTool(Tool):
                     f"File does not exist: {path}. To create a new file, use an empty old_string."
                 )
 
+            cleaned_new_string = clean_created_content(params.new_string)
             ensure_parent_directory(path)
-            path.write_text(params.new_string, encoding="utf-8")
+            path.write_text(cleaned_new_string, encoding="utf-8")
 
-            line_count = len(params.new_string.splitlines())
+            line_count = len(cleaned_new_string.splitlines())
 
             return ToolResult.success_result(
                 f"Created {path} {line_count} lines",
                 diff=FileDiff(
                     path=path,
                     old_content="",
-                    new_content=params.new_string,
+                    new_content=cleaned_new_string,
                     is_new_file=True,
                 ),
                 metadata={

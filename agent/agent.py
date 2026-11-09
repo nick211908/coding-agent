@@ -73,6 +73,7 @@ class Agent:
         for turn_num in range(max_turns):
             self.session.increment_turn()
             response_text = ""
+            text_completed = False
 
             # check for context overflow
             if self.session.context_manager.needs_compression():
@@ -111,6 +112,15 @@ class Agent:
                         content = event.text_delta.content
                         response_text += content
                         yield AgentEvent.text_delta(content)
+                elif event.type == StreamEventType.TOOL_CALL_START:
+                    if response_text and not text_completed:
+                        yield AgentEvent.text_complete(response_text)
+                        text_completed = True
+                    if event.tool_call_delta and event.tool_call_delta.name:
+                        yield AgentEvent.tool_call_generating(
+                            event.tool_call_delta.call_id,
+                            event.tool_call_delta.name,
+                        )
                 elif event.type == StreamEventType.TOOL_CALL_COMPLETE:
                     if event.tool_call:
                         tool_calls.append(event.tool_call)
@@ -139,8 +149,11 @@ class Agent:
                     else None
                 ),
             )
-            if response_text:
+            if response_text and not text_completed:
                 yield AgentEvent.text_complete(response_text)
+                text_completed = True
+
+            if response_text:
                 self.session.loop_detector.record_action(
                     "response",
                     text=response_text,

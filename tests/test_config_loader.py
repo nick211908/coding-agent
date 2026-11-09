@@ -45,3 +45,36 @@ class ConfigLoaderTests(unittest.TestCase):
 
             self.assertEqual(config.api_key, "saved-key")
             self.assertEqual(config.base_url, "https://saved.example/v1")
+
+    def test_parse_toml_with_utf8_bom(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_root = root / "cfg"
+            config_root.mkdir(parents=True)
+            # Write with UTF-8 BOM
+            (config_root / "config.toml").write_bytes(
+                b'\xef\xbb\xbfapi_key = "bom-key"\nbase_url = "https://bom.example/v1"\n'
+            )
+
+            with patch("config.loader.user_config_dir", return_value=str(config_root)):
+                config = load_config(cwd=root)
+
+            self.assertEqual(config.api_key, "bom-key")
+
+    def test_save_system_config_overwrites_corrupted_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_root = root / "cfg"
+            config_root.mkdir(parents=True)
+            # Corrupted file with illegal control char \x17
+            (config_root / "config.toml").write_bytes(
+                b'api_key = "bad\x17key"\n'
+            )
+
+            with patch("config.loader.user_config_dir", return_value=str(config_root)):
+                save_system_config({"api_key": "fixed-key\x17", "base_url": "https://fixed.example/v1"})
+
+                config = load_config(cwd=root)
+
+            self.assertEqual(config.api_key, "fixed-key")
+            self.assertEqual(config.base_url, "https://fixed.example/v1")

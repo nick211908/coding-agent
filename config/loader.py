@@ -41,9 +41,9 @@ def get_system_config_path() -> Path:
 
 def _parse_toml(path: Path) -> dict[str, Any]:
     try:
-        with open(path, "rb") as file_obj:
-            data = tomli.load(file_obj)
-            return data if isinstance(data, dict) else {}
+        content = path.read_text(encoding="utf-8-sig")
+        data = tomli.loads(content)
+        return data if isinstance(data, dict) else {}
     except tomli.TOMLDecodeError as error:
         raise ConfigError(
             f"Invalid TOML in {path}: {error}",
@@ -87,7 +87,14 @@ def _format_toml_value(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        cleaned = "".join(c for c in value if c >= " " or c in "\t\n\r")
+        escaped = (
+            cleaned.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
         return f'"{escaped}"'
     if isinstance(value, list):
         return "[" + ", ".join(_format_toml_value(item) for item in value) + "]"
@@ -131,7 +138,11 @@ def save_system_config(updates: dict[str, Any]) -> Path:
     current: dict[str, Any] = {}
 
     if config_path.is_file():
-        current = _parse_toml(config_path)
+        try:
+            current = _parse_toml(config_path)
+        except ConfigError:
+            logger.warning("Existing config at %s was invalid; overwriting.", config_path)
+            current = {}
 
     merged = _merge_dicts(current, updates)
     config_path.write_text(_dumps_toml(merged), encoding="utf-8")

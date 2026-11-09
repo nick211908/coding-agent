@@ -191,3 +191,69 @@ class ApplyPatchExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(confirmation.is_dangerous)
         self.assertIn(target, confirmation.affected_paths)
 
+    async def test_create_file_strips_leading_at_at_marker(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Create File: clean.py\n"
+            "@@\n"
+            "def hello():\n"
+            "    return 'world'\n"
+            "*** End Patch\n"
+        )
+        invocation = ToolInvocation(params={"patch": patch}, cwd=self.cwd)
+        result = await self.tool.execute(invocation)
+
+        self.assertTrue(result.success)
+        created_file = self.cwd / "clean.py"
+        self.assertTrue(created_file.exists())
+        self.assertEqual(
+            created_file.read_text(encoding="utf-8"),
+            "def hello():\n    return 'world'",
+        )
+
+    async def test_create_file_strips_unified_diff_hunk_header_and_plus_prefix(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Create File: unified.py\n"
+            "@@ -0,0 +1,3 @@\n"
+            "+def add(a, b):\n"
+            "+    return a + b\n"
+            "*** End Patch\n"
+        )
+        invocation = ToolInvocation(params={"patch": patch}, cwd=self.cwd)
+        result = await self.tool.execute(invocation)
+
+        self.assertTrue(result.success)
+        created_file = self.cwd / "unified.py"
+        self.assertTrue(created_file.exists())
+        self.assertEqual(
+            created_file.read_text(encoding="utf-8"),
+            "def add(a, b):\n    return a + b",
+        )
+
+    async def test_update_file_with_unified_diff_hunk(self) -> None:
+        target = self.cwd / "page.html"
+        target.write_text(
+            "<title>Todo List</title>\n<link rel=\"stylesheet\" href=\"styles.css\">\n",
+            encoding="utf-8",
+        )
+
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: page.html\n"
+            "@@\n"
+            " <title>Todo List</title>\n"
+            "+<link rel=\"icon\" href=\"favicon.svg\">\n"
+            " <link rel=\"stylesheet\" href=\"styles.css\">\n"
+            "*** End Patch\n"
+        )
+        invocation = ToolInvocation(params={"patch": patch}, cwd=self.cwd)
+        result = await self.tool.execute(invocation)
+
+        self.assertTrue(result.success)
+        self.assertIn("Updated: ", result.output)
+        self.assertEqual(
+            target.read_text(encoding="utf-8"),
+            "<title>Todo List</title>\n<link rel=\"icon\" href=\"favicon.svg\">\n<link rel=\"stylesheet\" href=\"styles.css\">\n",
+        )
+

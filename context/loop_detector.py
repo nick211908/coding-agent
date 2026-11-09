@@ -4,8 +4,8 @@ from typing import Any
 
 class LoopDetector:
     def __init__(self):
-        self.max_exact_repeats = 10
-        self.max_cycle_length = 10
+        self.max_exact_repeats = 3
+        self.max_cycle_length = 5
         self._history: deque[str] = deque(maxlen=20)
 
     def record_action(self, action_type: str, **details: Any):
@@ -28,20 +28,30 @@ class LoopDetector:
         if len(self._history) < 2:
             return None
 
-        if len(self._history) >= self.max_exact_repeats:
-            recent = list(self._history)[-self.max_exact_repeats :]
+        history = list(self._history)
+
+        # 1. Exact action repeated
+        if len(history) >= self.max_exact_repeats:
+            recent = history[-self.max_exact_repeats :]
             if len(set(recent)) == 1:
-                return f"Same action repeated {self.max_exact_repeats} tiems"
+                return f"Same action repeated {self.max_exact_repeats} times"
 
-        if len(self._history) >= self.max_cycle_length * 2:
-            history = list(self._history)
+        # 2. Cycle of actions repeating (e.g. A -> B -> A -> B)
+        for cycle_len in range(
+            2, min(self.max_cycle_length + 1, len(history) // 2 + 1)
+        ):
+            recent = history[-cycle_len * 2 :]
+            if recent[:cycle_len] == recent[cycle_len:]:
+                return f"Detected repeating cycle of length {cycle_len}"
 
-            for cycle_len in range(
-                2, min(self.max_cycle_length + 1, len(history) // 2 + 1)
-            ):
-                recent = history[-cycle_len * 2 :]
-                if recent[:cycle_len] == recent[cycle_len:]:
-                    return f"Detected repeating cycle of length {cycle_len}"
+        # 3. Consecutive single tool thrashing (e.g. 5 consecutive shell calls in a row)
+        if len(history) >= 5:
+            recent_tools = [
+                h.split("|")[1] if h.startswith("tool_call|") else ""
+                for h in history[-5:]
+            ]
+            if recent_tools[0] and len(set(recent_tools)) == 1:
+                return f"Called '{recent_tools[0]}' 5 times in a row without making progress"
 
         return None
 

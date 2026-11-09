@@ -1,6 +1,9 @@
+from functools import lru_cache
+import re
 import tiktoken
 
 
+@lru_cache(maxsize=32)
 def get_tokenizer(model: str):
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -77,3 +80,81 @@ def _truncate_by_chars(text: str, target_tokens: int, suffix: str, model: str) -
             high = mid - 1
 
     return text[:low] + suffix
+
+
+def clean_created_content(content: str) -> str:
+    """
+    Clean content for newly created files by stripping unified diff artifacts
+    (e.g. @@ hunk headers, diff '+' prefixes, markdown code fence blocks, or SEARCH/REPLACE blocks)
+    that LLMs frequently output when generating new files.
+    """
+    if not content:
+        return ""
+
+    lines = content.splitlines()
+
+    # Strip leading empty lines
+    while lines and not lines[0].strip():
+        lines.pop(0)
+
+    # Check if wrapped in SEARCH / REPLACE block
+    if lines and re.match(r"^<{7}\s*SEARCH\s*$", lines[0].strip()):
+        sep_idx = -1
+        for idx, line in enumerate(lines):
+            if re.match(r"^={7}\s*$", line.strip()):
+                sep_idx = idx
+                break
+        if sep_idx != -1:
+            lines = lines[sep_idx + 1 :]
+            if lines and re.match(r"^>{7}\s*REPLACE\s*$", lines[-1].strip()):
+                lines.pop()
+
+    # Strip leading markdown code fences e.g. ```python or ```
+    if lines and lines[0].strip().startswith("```"):
+        lines.pop(0)
+        if lines and lines[-1].strip() == "```":
+            lines.pop()
+
+    had_diff_header = False
+
+    # Strip diff header lines like --- a/file or --- /dev/null, +++ b/file
+    while lines and (
+        re.match(r"^---\s+\S+", lines[0].strip())
+        or re.match(r"^\+\+\+\s+\S+", lines[0].strip())
+    ):
+        had_diff_header = True
+        lines.pop(0)
+
+    # Strip leading unified diff hunk headers (e.g. "@@", "@@ -0,0 +1,5 @@", "@@ ... @@", "@@ -1,5 +1,5 @@ foo")
+    while lines and (
+        lines[0].strip().startswith("@@")
+        or re.match(r"^@@(?:\s*-\d+.*|\s*.*@@.*)?$", lines[0].strip())
+    ):
+        had_diff_header = True
+        lines.pop(0)
+
+    # Strip any secondary markdown code fence if diff was inside fences
+    if lines and lines[0].strip().startswith("```"):
+        lines.pop(0)
+        if lines and lines[-1].strip() == "```":
+            lines.pop()
+
+    # If diff headers were detected and all remaining non-empty lines start with '+', strip '+'
+    non_empty = [l for l in lines if l.strip()]
+    if non_empty and all(l.startswith("+") for l in non_empty):
+        # If we had diff headers, or if lines look like code rather than a '+' bullet list
+        if had_diff_header or any(
+            re.match(
+                r"^\+(?:def |import |from |class |const |let |var |function |<\?php|#include|package |/\*|\{|\}|\[|\])",
+                l,
+            )
+            for l in non_empty
+        ):
+            lines = [l[1:] if l.startswith("+") else l for l in lines]
+
+    # Strip any trailing empty lines
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    return "\n".join(lines)
+
