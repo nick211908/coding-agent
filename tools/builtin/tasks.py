@@ -24,15 +24,54 @@ class Task:
 class TaskStore:
     def __init__(self, cwd: Path):
         self.tasks_dir = cwd / ".tasks"
-        self.tasks_dir.mkdir(exist_ok=True)
 
     def _get_path(self, task_id: str) -> Path:
         return self.tasks_dir / f"{task_id}.json"
 
+    def _get_md_path(self, task_id: str) -> Path:
+        return self.tasks_dir / f"{task_id}.md"
+
     def save(self, task: Task) -> None:
+        self.tasks_dir.mkdir(parents=True, exist_ok=True)
         path = self._get_path(task.id)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(asdict(task), f, indent=2)
+
+        md_path = self._get_md_path(task.id)
+        self._write_markdown(md_path, task)
+
+    def _write_markdown(self, path: Path, task: Task) -> None:
+        lines = [
+            f"# Task: {task.subject}",
+            "",
+            f"- **ID:** `{task.id}`",
+            f"- **Status:** `{task.status}`",
+            f"- **Owner:** `{task.owner or 'Unassigned'}`",
+        ]
+        if task.blockedBy:
+            lines.append(f"- **Blocked By:** {', '.join(f'`{b}`' for b in task.blockedBy)}")
+
+        lines.append("")
+        if task.description:
+            lines.extend([
+                "## Description",
+                task.description,
+                "",
+            ])
+
+        lines.append("## Todos / Checklist")
+        if task.todos:
+            for todo in task.todos:
+                box = "[x]" if todo.get("completed") else "[ ]"
+                content = todo.get("content", "")
+                todo_id = todo.get("id", "")
+                lines.append(f"- {box} {content} `({todo_id})`")
+        else:
+            lines.append("_No todos added yet._")
+
+        lines.append("")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     def load(self, task_id: str) -> Task:
         path = self._get_path(task_id)
@@ -59,6 +98,8 @@ class TaskStore:
         return task
 
     def list_all(self) -> list[Task]:
+        if not self.tasks_dir.exists():
+            return []
         tasks = []
         for file in self.tasks_dir.glob("*.json"):
             try:
