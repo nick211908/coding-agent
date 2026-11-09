@@ -99,6 +99,17 @@ class Config(BaseModel):
         exclude=True,
         repr=False,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_model_config(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            model_val = data.get("model")
+            if isinstance(model_val, str):
+                data["model"] = {"name": model_val}
+            elif "model_name" in data and "model" not in data:
+                data["model"] = {"name": data.pop("model_name")}
+        return data
     base_url_value: str | None = Field(
         default=None,
         alias="base_url",

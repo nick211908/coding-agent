@@ -64,9 +64,7 @@ class CLI:
             self.agent = agent
             return await self._process_message(message)
 
-    async def run_interactive(self) -> str | None:
-        from agent.agent import Agent
-
+    def _render_welcome(self) -> None:
         self.tui.print_welcome(
             "codenaut",
             lines=[
@@ -75,6 +73,11 @@ class CLI:
                 "commands: /help /config /approval /setup /model /exit",
             ],
         )
+
+    async def run_interactive(self) -> str | None:
+        from agent.agent import Agent
+
+        self._render_welcome()
 
         async with Agent(
             self.config,
@@ -193,19 +196,23 @@ class CLI:
         return final_response
 
     async def _handle_command(self, command: str) -> bool:
-        cmd = command.lower().strip()
-        parts = cmd.split(maxsplit=1)
-        cmd_name = parts[0]
-        cmd_args = parts[1] if len(parts) > 1 else ""
+        raw_parts = command.strip().split(maxsplit=1)
+        if not raw_parts:
+            return True
+        cmd_name = raw_parts[0].lower()
+        cmd_args = raw_parts[1].strip() if len(raw_parts) > 1 else ""
+
         if cmd_name == "/exit" or cmd_name == "/quit":
             return False
-        elif command == "/help":
+        elif cmd_name == "/help":
             self.tui.show_help()
-        elif command == "/clear":
+        elif cmd_name == "/clear":
             self.agent.session.context_manager.clear()
             self.agent.session.loop_detector.clear()
-            console.print("[success]Conversation cleared [/success]")
-        elif command == "/config":
+            console.clear()
+            self._render_welcome()
+            console.print("[success]Conversation cleared[/success]")
+        elif cmd_name == "/config":
             console.print("\n[bold]Current Configuration[/bold]")
             console.print(f"  Model: {self.config.model_name}")
             console.print(f"  Temperature: {self.config.temperature}")
@@ -217,16 +224,22 @@ class CLI:
         elif cmd_name == "/model":
             if cmd_args:
                 self.config.model_name = cmd_args
-                console.print(f"[success]Model changed to: {cmd_args} [/success]")
+                save_system_config({"model": {"name": cmd_args}})
+                console.clear()
+                self._render_welcome()
+                console.print(
+                    f"[success]Model changed and saved to: {cmd_args}[/success]"
+                )
             else:
                 console.print(f"Current model: {self.config.model_name}")
         elif cmd_name == "/approval":
             if cmd_args:
                 try:
-                    approval = ApprovalPolicy(cmd_args)
+                    approval = ApprovalPolicy(cmd_args.lower())
                     self.config.approval = approval
+                    save_system_config({"approval": approval.value})
                     console.print(
-                        f"[success]Approval policy changed to: {cmd_args} [/success]"
+                        f"[success]Approval policy changed and saved to: {approval.value}[/success]"
                     )
                 except ValueError:
                     console.print(
@@ -240,6 +253,8 @@ class CLI:
         elif cmd_name == "/setup":
             self.config = configure_credentials_interactively(self.config)
             self.tui = TUI(self.config, console)
+            console.clear()
+            self._render_welcome()
         elif cmd_name == "/stats":
             stats = self.agent.session.get_stats()
             console.print("\n[bold]Session Statistics [/bold]")

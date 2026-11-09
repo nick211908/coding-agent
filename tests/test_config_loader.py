@@ -78,3 +78,29 @@ class ConfigLoaderTests(unittest.TestCase):
 
             self.assertEqual(config.api_key, "fixed-key")
             self.assertEqual(config.base_url, "https://fixed.example/v1")
+
+    def test_save_model_persists_and_reloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_root = root / "cfg"
+
+            with patch("config.loader.user_config_dir", return_value=str(config_root)):
+                save_system_config({"model": {"name": "qwen/qwen-2.5-coder-32b-instruct"}})
+                config = load_config(cwd=root)
+
+            self.assertEqual(config.model_name, "qwen/qwen-2.5-coder-32b-instruct")
+
+    def test_load_config_with_model_scalar_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_root = root / "cfg"
+            config_root.mkdir(parents=True)
+            (config_root / "config.toml").write_text(
+                'api_key = "key"\nmodel = "custom-scalar-model"\n',
+                encoding="utf-8",
+            )
+
+            with patch("config.loader.user_config_dir", return_value=str(config_root)):
+                config = load_config(cwd=root)
+
+            self.assertEqual(config.model_name, "custom-scalar-model")
