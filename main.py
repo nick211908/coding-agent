@@ -44,10 +44,12 @@ def configure_credentials_interactively(config: Config | None = None) -> Config:
 class CLI:
     def __init__(self, config: Config):
         from agent.persistence import PersistenceManager, SessionSnapshot
+        from ui.prompt import InteractivePrompt
 
         self.agent: Agent | None = None
         self.config = config
         self.tui = TUI(config, console)
+        self.interactive_prompt = InteractivePrompt(self.config.cwd)
         self._persistence_manager_cls = PersistenceManager
         self._session_snapshot_cls = SessionSnapshot
 
@@ -79,7 +81,8 @@ class CLI:
             while True:
                 try:
                     self.tui.print_current_state()
-                    user_input = console.input("\n[user]>[/user] ").strip()
+                    console.print()
+                    user_input = await self.interactive_prompt.get_input()
                     if not user_input:
                         continue
 
@@ -90,6 +93,7 @@ class CLI:
                         continue
 
                     await self._process_message(user_input)
+                    self.interactive_prompt.refresh_completions()
                 except KeyboardInterrupt:
                     console.print("\n[dim]Use /exit to quit[/dim]")
                 except EOFError:
@@ -105,9 +109,19 @@ class CLI:
     @traceable
     async def _process_message(self, message: str) -> str | None:
         from agent.events import AgentEventType
+        from utils.file_tags import resolve_file_tags
+        from utils.paths import display_path_rel_to_cwd
 
         if not self.agent:
             return None
+
+        enriched_message, tagged_files = resolve_file_tags(message, self.config.cwd)
+        if tagged_files:
+            file_names = ", ".join(
+                display_path_rel_to_cwd(str(f), self.config.cwd) for f in tagged_files
+            )
+            console.print(f"[dim]📎 Tagged {len(tagged_files)} file(s): {file_names}[/dim]")
+        message = enriched_message
 
         assistant_streaming = True
         final_response: str | None = None

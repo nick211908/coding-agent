@@ -201,23 +201,24 @@ class Agent:
                         )
                     )
 
-                for tool_result in tool_call_results:
-                    self.session.context_manager.add_tool_result(
-                        tool_result.tool_call_id,
-                        tool_result.content,
-                    )
+            for tool_result in tool_call_results:
+                self.session.context_manager.add_tool_result(
+                    tool_result.tool_call_id,
+                    tool_result.content,
+                )
 
-                loop_detection_error = self.session.loop_detector.check_for_loop()
-                if loop_detection_error:
-                    loop_prompt = create_loop_breaker_prompt(loop_detection_error)
-                    self.session.context_manager.add_user_message(loop_prompt)
+            loop_detection_error = self.session.loop_detector.check_for_loop()
+            if loop_detection_error:
+                loop_prompt = create_loop_breaker_prompt(loop_detection_error)
+                self.session.context_manager.add_user_message(loop_prompt)
 
-                if usage:
-                    self.session.context_manager.set_latest_usage(usage)
-                    self.session.context_manager.add_usage(usage)
+            if usage:
+                self.session.context_manager.set_latest_usage(usage)
+                self.session.context_manager.add_usage(usage)
 
-                self.session.context_manager.prune_tool_outputs()
-            yield AgentEvent.agent_error(f"Maximum turns ({max_turns}) reached")
+            self.session.context_manager.prune_tool_outputs()
+
+        yield AgentEvent.agent_error(f"Maximum turns ({max_turns}) reached")
 
     async def __aenter__(self) -> Agent:
         await self.session.initialize()

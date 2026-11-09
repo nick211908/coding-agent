@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from unified_agent.tools.base import (
+from tools.base import (
     FileDiff,
     ToolConfirmation,
     ToolInvocation,
@@ -385,3 +385,4 @@ class ApplyPatchTool(Tool):
             op.move_path.rename(op.path)
 
         return f"Renamed: {op.move_path} -> {op.path}"
+
