@@ -27,7 +27,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests
-        run: uv run python -m unittest tests.test_config_loader tests.test_skills
+        run: uv run pytest tests
 
       - name: Build distributions
         run: uv build --no-sources

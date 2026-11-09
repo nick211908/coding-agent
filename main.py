@@ -64,7 +64,7 @@ class CLI:
         from agent.agent import Agent
 
         self.tui.print_welcome(
-            "code-it",
+            "codenaut",
             lines=[
                 f"model: {self.config.model_name}",
                 f"cwd: {self.config.cwd}",
@@ -399,7 +399,7 @@ def main(prompt: str | None, cwd: Path | None, configure: bool) -> None:
             config = configure_credentials_interactively(config)
         else:
             console.print(
-                "[error]No API key found. Run `code-it --configure` to save one.[/error]"
+                "[error]No API key found. Run `codenaut --configure` to save one.[/error]"
             )
             sys.exit(1)
 

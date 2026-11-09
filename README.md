@@ -1,160 +1,167 @@
-# code-it
+# codenaut
 
-A terminal-based, OpenAI-compatible coding agent that reads, edits, and runs code in your project through a ReAct-style tool-calling loop with approvals, hooks, MCP, and session persistence.
+[![PyPI version](https://img.shields.io/pypi/v/codenaut.svg)](https://pypi.org/project/codenaut/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Built with uv](https://img.shields.io/badge/built%20with-uv-purple.svg)](https://github.com/astral-sh/uv)
 
-## Install
+An autonomous terminal-based AI coding assistant that navigates, plans, edits, and executes code in your repository with tool calling, multi-file diff patching, file tagging, task management, and MCP support.
 
-Prerequisites: Python 3.13+ and `uv`.
+---
 
-Install dependencies into the project-managed environment:
+![codenaut terminal in action](assets/screenshot.jpg)
 
+---
+
+## Highlights
+
+- 🚀 **`@` File Tagging & Autocompletion**: Type `@` anywhere in the prompt to search and tag files with dynamic dropdown suggestions. Tagged files automatically attach to your prompt context.
+- ⚡ **Interactive Slash Commands**: Type `/` to get instantaneous popup completion for commands (`/help`, `/config`, `/approval`, `/setup`, `/model`, `/checkpoint`, etc.).
+- 🛠️ **Multi-File Patching (`apply_patch`)**: Supports search/replace hunks, file creation, deletion, and renames across multiple files atomically.
+- 📋 **Live Task & Checklist Engine**: Manages complex plans with `create_task` and `add_todo`, maintaining markdown checklists (`.tasks/*.md`) that update in real-time as subtasks complete.
+- 🔌 **Model Context Protocol (MCP)**: Native support for connecting external MCP servers and tools.
+- 🛡️ **Safety & Approvals**: Configurable approval policies (`always`, `prompt`, `never`) for dangerous tools, shell executions, and file deletions.
+- 🧠 **Any OpenAI-Compatible Provider**: Works out of the box with OpenAI, OpenRouter, Groq, Ollama, vLLM, or any custom API endpoint.
+- 💾 **Checkpoints & Persistence**: Snapshot, restore, save, and resume your coding sessions anytime.
+
+---
+
+## Installation
+
+### Option 1: Using `uv` (Recommended)
+
+Run directly on the fly without installing:
 ```bash
-uv sync
+uvx codenaut
 ```
 
-Build distributable artifacts:
+Or install globally as a persistent CLI tool:
+```bash
+uv tool install codenaut
+codenaut
+```
 
+### Option 2: Using `pip`
+
+```bash
+pip install codenaut
+codenaut
+```
+
+### Option 3: Using `pipx`
+
+```bash
+pipx install codenaut
+codenaut
+```
+
+### Option 4: From Source (Development)
+
+```bash
+git clone https://github.com/nick211908/coding-agent.git
+cd coding-agent
+uv sync
+uv run codenaut
+```
+
+---
+
+## Getting Started
+
+### 1. Configure Credentials
+
+Configure your API key and provider URL:
+
+```bash
+codenaut --configure
+```
+
+You will be prompted for:
+1. **API Key**: Your provider secret key (OpenAI, OpenRouter, Groq, etc.).
+2. **Base URL**: Leave blank for default OpenAI, or enter your provider's URL (e.g. `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`).
+
+Credentials are securely stored in your user configuration directory:
+* **Windows**: `%APPDATA%\codenaut\config.toml`
+* **macOS**: `~/Library/Application Support/codenaut/config.toml`
+* **Linux**: `~/.config/codenaut/config.toml`
+
+*(You can also use a project `.env` file or `API_KEY` / `BASE_URL` environment variables).*
+
+---
+
+## Usage
+
+### Interactive Mode
+
+Start an interactive conversation in the current directory:
+```bash
+codenaut
+```
+
+Target a different project directory:
+```bash
+codenaut --cwd /path/to/project
+```
+
+### Single Prompt Mode
+
+Run a single command or question non-interactively:
+```bash
+codenaut "Find and fix the failing test in tests/test_auth.py"
+```
+
+### File Tagging (`@`)
+
+Tag one or more files anywhere in your message to inject their content directly into the conversation:
+```text
+> Can you compare @agent/agent.py with @main.py and refactor the loop?
+```
+As soon as you type `@`, a popup dropdown will suggest matching files from your repository.
+
+---
+
+## Interactive Slash Commands
+
+Inside the interactive session, type `/` to access built-in commands:
+
+| Command | Description |
+| :--- | :--- |
+| `/help` | Display command help and usage guide |
+| `/config` | View active configuration and model parameters |
+| `/approval` | Toggle approval policy (`always`, `prompt`, `never`) |
+| `/setup` | Launch the credential configuration wizard |
+| `/model` | Switch the active LLM model |
+| `/checkpoint` | Save an instant snapshot of the current session state |
+| `/restore` | Restore session state from a checkpoint ID |
+| `/sessions` | List all saved past sessions |
+| `/resume` | Resume a previous session by session ID |
+| `/exit` or `/quit` | Exit the session |
+
+---
+
+## Project Customization
+
+Customizations can be defined per-repository:
+
+* **`AGENT.MD`**: Place an `AGENT.MD` file in your repository root (or subdirectories) to enforce project-specific coding standards, architectural rules, or instructions.
+* **`.ai-agent/skills/`**: Add reusable skill folders containing `SKILL.md` to teach `codenaut` specific workflows.
+* **`.ai-agent/tools/`**: Add custom Python tools discovered automatically at runtime.
+
+---
+
+## Development & Testing
+
+Run unit tests:
+```bash
+uv run pytest tests
+```
+
+Build release packages:
 ```bash
 uv build
 ```
 
-This creates:
-
-- `dist/code_it-<version>-py3-none-any.whl`
-- `dist/code_it-<version>.tar.gz`
-
-## First Run
-
-After syncing the project environment, configure credentials:
-
-```bash
-uv run code-it --configure
-```
-
-This prompts for:
-
-- your API key
-- an optional base URL for any OpenAI-compatible provider
-
-The values are saved in your user config file at:
-
-- Windows: `%APPDATA%\code-it\config.toml`
-- macOS: `~/Library/Application Support/code-it/config.toml`
-- Linux: `~/.config/code-it/config.toml`
-
-You can still use a project-local `.env` file or `API_KEY` and `BASE_URL` environment variables, but they are no longer required for packaged installs.
-
-## Usage
-
-Run interactively:
-
-```bash
-uv run code-it
-```
-
-Run a single prompt:
-
-```bash
-uv run code-it "Summarize what this repo does"
-```
-
-Target a specific working directory:
-
-```bash
-uv run code-it --cwd /path/to/project "Find and fix the failing test"
-```
-
-Update saved credentials later:
-
-```bash
-uv run code-it --configure
-```
-
-Inside an interactive session:
-
-```text
-[user]> /setup                  # update saved API credentials
-[user]> /tools                  # list available tools
-[user]> /mcp                    # list connected MCP servers
-[user]> /approval auto-edit     # change the approval policy
-[user]> /save                   # save the current session
-[user]> /sessions               # list saved sessions
-[user]> /resume <session_id>    # resume a saved session
-[user]> /checkpoint             # snapshot the current session
-[user]> /stats                  # show token/turn usage stats
-[user]> /exit                   # quit
-```
-
-## Project Config
-
-Project-level overrides still live in `.ai-agent/config.toml`.
-
-You can also add:
-
-- `AGENT.MD` for project-specific developer instructions
-- `.ai-agent/skills/<skill-name>/SKILL.md` for reusable skills
-- `.ai-agent/tools/*.py` for custom tools
-
-## Publish Checklist
-
-1. Bump `version` in `pyproject.toml`.
-2. Run tests.
-3. Build the wheel and sdist with `uv build --no-sources`.
-4. Test the CLI with `uv run code-it --configure`.
-5. Upload to TestPyPI.
-6. Verify both `uv run code-it --configure` and `uv run code-it` work.
-7. Publish to PyPI.
-
-## Publish With uv
-
-Recommended local release flow:
-
-```bash
-uv sync --frozen
-uv run python -m unittest tests.test_config_loader tests.test_skills
-uv build --no-sources
-uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
-uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
-```
-
-TestPyPI publish:
-
-```bash
-$env:UV_PUBLISH_TOKEN="pypi-***"
-uv publish --publish-url https://test.pypi.org/legacy/
-```
-
-PyPI publish:
-
-```bash
-$env:UV_PUBLISH_TOKEN="pypi-***"
-uv publish
-```
-
-For the first release, verify the package name on PyPI before publishing. If `code-it` is already taken, rename `project.name` in `pyproject.toml` before uploading.
-
-## Trusted Publishing
-
-A GitHub Actions release workflow is included at `.github/workflows/publish.yml`.
-
-To use it:
-
-1. Create the project on PyPI.
-2. In the PyPI project settings, add a Trusted Publisher for this GitHub repository.
-3. In GitHub, create an environment named `pypi`.
-4. Push a version tag like `v0.1.0`.
-
-That workflow will:
-
-- sync with `uv`
-- run the unit tests
-- build the wheel and source distribution
-- smoke-test both artifacts
-- publish with `uv publish`
-
-## Why `uv` Instead of `pip install -e .`
-
-This repository already carries a `uv.lock`, so `uv sync` is the safer default for development. It avoids polluting a shared Python installation and reduces resolver conflicts with unrelated packages already installed on your machine.
+---
 
 ## License
 

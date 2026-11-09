@@ -3,7 +3,7 @@ requires = ["setuptools>=80", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "code-it"
+name = "codenaut"
 version = "0.1.0"
 description = "A terminal-based OpenAI-compatible coding agent with tools, approvals, MCP, and session persistence."
 readme = "README.md"
@@ -40,10 +40,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "pytest>=7.4.0",
   "pylint>=4.0.6",
 ]
 
 [project.scripts]
+codenaut = "main:main"
 code-it = "main:main"
 
 [project.urls]
