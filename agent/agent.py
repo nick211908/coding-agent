@@ -7,7 +7,7 @@ from client.response import StreamEventType, TokenUsage, ToolCall, ToolResultMes
 from config.config import Config
 from prompts.system import create_loop_breaker_prompt
 from tools.base import ToolConfirmation
-
+from langsmith import trace
 
 class Agent:
     def __init__(
@@ -20,20 +20,29 @@ class Agent:
         self.session.approval_manager.confirmation_callback = confirmation_callback
 
     async def run(self, message: str):
-        await self.session.hook_system.trigger_before_agent(message)
-        yield AgentEvent.agent_start(message)
-        self.session.context_manager.add_user_message(message)
+        with trace(
+            name="agent.run",
+            run_type="chain",
+            inputs={"message": message},
+            metadata={"model": self.config.model_name},
+        ) as run:
+            await self.session.hook_system.trigger_before_agent(message)
+            yield AgentEvent.agent_start(message)
+            self.session.context_manager.add_user_message(message)
 
-        final_response: str | None = None
+            final_response: str | None = None
 
-        async for event in self._agentic_loop(message):
-            yield event
+            async for event in self._agentic_loop(message):
+                yield event
 
-            if event.type == AgentEventType.TEXT_COMPLETE:
-                final_response = event.data.get("content")
+                if event.type == AgentEventType.TEXT_COMPLETE:
+                    final_response = event.data.get("content")
 
-        await self.session.hook_system.trigger_after_agent(message, final_response)
-        yield AgentEvent.agent_end(final_response)
+            # Patch the output onto the run before the span closes
+            run.end(outputs={"response": final_response})
+
+            await self.session.hook_system.trigger_after_agent(message, final_response)
+            yield AgentEvent.agent_end(final_response)
 
     def _should_enable_tools(self, message: str) -> bool:
         normalized = " ".join(message.lower().strip().split())
@@ -150,57 +159,65 @@ class Agent:
             tool_call_results: list[ToolResultMessage] = []
 
             for tool_call in tool_calls:
-                yield AgentEvent.tool_call_start(
-                    tool_call.call_id,
-                    tool_call.name,
-                    tool_call.arguments,
-                )
-
-                self.session.loop_detector.record_action(
-                    "tool_call",
-                    tool_name=tool_call.name,
-                    args=tool_call.arguments,
-                )
-
-                result = await self.session.tool_registry.invoke(
-                    tool_call.name,
-                    tool_call.arguments,
-                    self.config.cwd,
-                    self.session.hook_system,
-                    self.session.approval_manager,
-                )
-
-                yield AgentEvent.tool_call_complete(
-                    tool_call.call_id,
-                    tool_call.name,
-                    result,
-                )
-
-                tool_call_results.append(
-                    ToolResultMessage(
-                        tool_call_id=tool_call.call_id,
-                        content=result.to_model_output(),
-                        is_error=not result.success,
+                with trace(
+                    name=f"tool.{tool_call.name}",
+                    run_type="tool",
+                    inputs={
+                        "tool_name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                    },
+                ) as tool_run:
+                    yield AgentEvent.tool_call_start(
+                        tool_call.call_id,
+                        tool_call.name,
+                        tool_call.arguments,
                     )
-                )
 
-            for tool_result in tool_call_results:
-                self.session.context_manager.add_tool_result(
-                    tool_result.tool_call_id,
-                    tool_result.content,
-                )
+                    self.session.loop_detector.record_action(
+                        "tool_call",
+                        tool_name=tool_call.name,
+                        args=tool_call.arguments,
+                    )
 
-            loop_detection_error = self.session.loop_detector.check_for_loop()
-            if loop_detection_error:
-                loop_prompt = create_loop_breaker_prompt(loop_detection_error)
-                self.session.context_manager.add_user_message(loop_prompt)
+                    result = await self.session.tool_registry.invoke(
+                        tool_call.name,
+                        tool_call.arguments,
+                        self.config.cwd,
+                        self.session.hook_system,
+                        self.session.approval_manager,
+                    )
 
-            if usage:
-                self.session.context_manager.set_latest_usage(usage)
-                self.session.context_manager.add_usage(usage)
+                    yield AgentEvent.tool_call_complete(
+                        tool_call.call_id,
+                        tool_call.name,
+                        result,
+                    )
 
-            self.session.context_manager.prune_tool_outputs()
-        yield AgentEvent.agent_error(f"Maximum turns ({max_turns}) reached")
+                    tool_call_results.append(
+                        ToolResultMessage(
+                            tool_call_id=tool_call.call_id,
+                            content=result.to_model_output(),
+                            is_error=not result.success,
+                        )
+                    )
+
+                for tool_result in tool_call_results:
+                    self.session.context_manager.add_tool_result(
+                        tool_result.tool_call_id,
+                        tool_result.content,
+                    )
+
+                loop_detection_error = self.session.loop_detector.check_for_loop()
+                if loop_detection_error:
+                    loop_prompt = create_loop_breaker_prompt(loop_detection_error)
+                    self.session.context_manager.add_user_message(loop_prompt)
+
+                if usage:
+                    self.session.context_manager.set_latest_usage(usage)
+                    self.session.context_manager.add_usage(usage)
+
+                self.session.context_manager.prune_tool_outputs()
+            yield AgentEvent.agent_error(f"Maximum turns ({max_turns}) reached")
 
     async def __aenter__(self) -> Agent:
         await self.session.initialize()

@@ -54,7 +54,7 @@ class ApprovalPolicy(str, Enum):
     ON_REQUEST = "on-request"
     ON_FAILURE = "on-failure"
     AUTO = "auto"
-    AUTO_EDIT = "auto-edut"
+    AUTO_EDIT = "auto-editt"
     NEVER = "never"
     YOLO = "yolo"
 
@@ -88,7 +88,7 @@ class Config(BaseModel):
     shell_environment: ShellEnvironmentPolicy = Field(
         default_factory=ShellEnvironmentPolicy
     )
-    hooks_enabled: bool = False
+    hooks_enabled: bool = True
     hooks: list[HookConfig] = Field(default_factory=list)
     approval: ApprovalPolicy = ApprovalPolicy.ON_REQUEST
     max_turns: int = 100

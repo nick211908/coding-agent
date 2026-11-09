@@ -651,7 +651,7 @@ class TUI:
                 if task.todos:
                     lines.append("[bold]Todos:[/bold]")
                     for todo in task.todos:
-                        checkbox = "[green]✓[/green]" if todo.get("completed") else "[red]![/red]"
+                        checkbox = "[green]\\[x\\][/green]" if todo.get("completed") else "[red]\\[ \\][/red]"
                         lines.append(f"  {checkbox} {todo.get('content')} [dim]({todo.get('id')})[/dim]")
                 else:
                     lines.append("[dim]No todos yet.[/dim]")

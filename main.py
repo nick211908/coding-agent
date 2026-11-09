@@ -1,3 +1,4 @@
+from langsmith import traceable
 import asyncio
 from pathlib import Path
 import sys
@@ -101,14 +102,14 @@ class CLI:
         if not tool:
             return None
         return tool.kind.value
-
+    @traceable
     async def _process_message(self, message: str) -> str | None:
         from agent.events import AgentEventType
 
         if not self.agent:
             return None
 
-        assistant_streaming = False
+        assistant_streaming = True
         final_response: str | None = None
 
         async for event in self.agent.run(message):

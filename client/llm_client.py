@@ -13,7 +13,7 @@ from client.response import (
     parse_tool_call_arguments,
 )
 from config.config import Config
-
+from langsmith import trace
 
 class LLMClient:
     def __init__(self, config: Config) -> None:
@@ -74,53 +74,64 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[StreamEvent, None]:
-        client = self.get_client()
 
-        kwargs = {
-            "model": self.config.model_name,
-            "messages": messages,
-            "stream": stream,
-        }
+        with trace(
+            name="llm.chat_completion",
+            run_type="llm",
+            inputs={
+                "messages": messages,
+                "model": self.config.model_name,
+                "tools_count": len(tools) if tools else 0,
+            },
+            metadata={"model": self.config.model_name},
+        ) as run:
+            client = self.get_client()
 
-        if tools:
-            kwargs["tools"] = self._build_tools(tools)
-            kwargs["tool_choice"] = "auto"
+            kwargs = {
+                "model": self.config.model_name,
+                "messages": messages,
+                "stream": stream,
+            }
 
-        for attempt in range(self._max_retries + 1):
-            try:
-                if stream:
-                    async for event in self._stream_response(client, kwargs):
+            if tools:
+                kwargs["tools"] = self._build_tools(tools)
+                kwargs["tool_choice"] = "auto"
+
+            for attempt in range(self._max_retries + 1):
+                try:
+                    if stream:
+                        async for event in self._stream_response(client, kwargs):
+                            yield event
+                    else:
+                        event = await self._non_stream_response(client, kwargs)
                         yield event
-                else:
-                    event = await self._non_stream_response(client, kwargs)
-                    yield event
-                return
-            except RateLimitError as e:
-                if attempt < self._max_retries:
-                    wait_time = 2**attempt
-                    await asyncio.sleep(wait_time)
-                else:
+                    return
+                except RateLimitError as e:
+                    if attempt < self._max_retries:
+                        wait_time = 2**attempt
+                        await asyncio.sleep(wait_time)
+                    else:
+                        yield StreamEvent(
+                            type=StreamEventType.ERROR,
+                            error=f"Rate limit exceeded: {e}",
+                        )
+                        return
+                except APIConnectionError as e:
+                    if attempt < self._max_retries:
+                        wait_time = 2**attempt
+                        await asyncio.sleep(wait_time)
+                    else:
+                        yield StreamEvent(
+                            type=StreamEventType.ERROR,
+                            error=f"Connection error: {e}",
+                        )
+                        return
+                except APIError as e:
                     yield StreamEvent(
                         type=StreamEventType.ERROR,
-                        error=f"Rate limit exceeded: {e}",
+                        error=f"API error: {e}",
                     )
                     return
-            except APIConnectionError as e:
-                if attempt < self._max_retries:
-                    wait_time = 2**attempt
-                    await asyncio.sleep(wait_time)
-                else:
-                    yield StreamEvent(
-                        type=StreamEventType.ERROR,
-                        error=f"Connection error: {e}",
-                    )
-                    return
-            except APIError as e:
-                yield StreamEvent(
-                    type=StreamEventType.ERROR,
-                    error=f"API error: {e}",
-                )
-                return
 
     async def _stream_response(
         self,

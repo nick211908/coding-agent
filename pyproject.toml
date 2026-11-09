@@ -27,6 +27,7 @@ dependencies = [
   "ddgs>=9.14.4",
   "fastmcp>=3.4.2",
   "httpx>=0.28.1",
+  "langsmith>=0.13.0",
   "openai>=2.44.0",
   "platformdirs>=4.10.0",
   "pydantic>=2.13.4",
