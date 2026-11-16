@@ -135,7 +135,7 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
     with tempfile.TemporaryDirectory(prefix=f"codenaut-{task['id']}-") as tmp:
         workdir = Path(tmp)
         write_fixture(workdir, task.get("files", {}))
-        has_git = initialize_git(workdir)
+        (workdir / ".gitignore").write_text("__pycache__/\\n*.py[cod]\\n.pytest_cache/\\n", encoding="utf-8")
         config_dir = workdir / ".ai-agent"
         config_dir.mkdir(exist_ok=True)
         model = args.model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -150,6 +150,7 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
             "temperature = 0.0\n"
         )
         (config_dir / "config.toml").write_text(config, encoding="utf-8")
+        has_git = initialize_git(workdir)
 
         env = os.environ.copy()
         env["BASE_URL"] = env.get("BASE_URL", "https://api.groq.com/openai/v1")
