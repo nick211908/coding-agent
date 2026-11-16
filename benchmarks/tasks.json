@@ -119,7 +119,7 @@
       "id": "C06",
       "title": "Use a read-only specialist subagent",
       "category": "subagent_orchestration",
-      "prompt": "Use the codebase-investigator subagent to inspect this repository and report which function calls normalize before validate. Do not modify any files. Incorporate the subagent's findings into your final answer.",
+      "prompt": "Use the subagent_codebase_investigator tool to inspect this repository and report which function calls normalize before validate. Do not modify any files. Incorporate the subagent's findings into your final answer.",
       "files": {
         "src/flow.py": "def normalize(value: str) -> str:\n    return value.strip()\n\ndef validate(value: str) -> bool:\n    return len(value) > 0\n\ndef handle(value: str) -> bool:\n    normalized = normalize(value)\n    return validate(normalized)\n"
       },
