@@ -135,7 +135,7 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
     with tempfile.TemporaryDirectory(prefix=f"codenaut-{task['id']}-") as tmp:
         workdir = Path(tmp)
         write_fixture(workdir, task.get("files", {}))
-        (workdir / ".gitignore").write_text("__pycache__/\\n*.py[cod]\\n.pytest_cache/\\n", encoding="utf-8")
+        (workdir / ".gitignore").write_text("__pycache__/\n*.py[cod]\n.pytest_cache/\n", encoding="utf-8")
         config_dir = workdir / ".ai-agent"
         config_dir.mkdir(exist_ok=True)
         model = args.model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
