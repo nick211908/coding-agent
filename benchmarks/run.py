@@ -79,12 +79,12 @@ def collect_diff(workdir: Path, has_git: bool) -> tuple[str, list[str]]:
     return diff.stdout, sorted(x for x in names.stdout.splitlines() if x)
 
 
-def run_command(command: list[str], cwd: Path, timeout: int) -> dict[str, Any]:
+def run_command(command: list[str], cwd: Path, timeout: int, env: dict[str, str] | None = None) -> dict[str, Any]:
     started = time.perf_counter()
     try:
         proc = subprocess.run(
             command, cwd=cwd, capture_output=True, text=True,
-            timeout=timeout, check=False,
+            timeout=timeout, check=False, env=env,
         )
         return {
             "command": command, "returncode": proc.returncode,
@@ -140,14 +140,14 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
         config_dir.mkdir(exist_ok=True)
         model = args.model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         config = (
-            "[model]\n"
-            f'name = "{model}"\n'
-            "temperature = 0.0\n"
-            "\n"
-            'approval = "yolo"\n'
-            f"max_turns = {args.max_turns}\n"
-            "hooks_enabled = false\n"
-            "skills_enabled = false\n"
+            'approval = "yolo"\\n'
+            f"max_turns = {args.max_turns}\\n"
+            "hooks_enabled = false\\n"
+            "skills_enabled = false\\n"
+            "\\n"
+            "[model]\\n"
+            f'name = "{model}"\\n'
+            "temperature = 0.0\\n"
         )
         (config_dir / "config.toml").write_text(config, encoding="utf-8")
 
@@ -164,7 +164,7 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
                 "stderr": "", "duration_seconds": 0.0, "timed_out": False,
             }
         else:
-            agent_result = run_command(command, ROOT, args.timeout)
+            agent_result = run_command(command, ROOT, args.timeout, env=env)
         agent_seconds = round(time.perf_counter() - started, 3)
 
         verify_results = []
