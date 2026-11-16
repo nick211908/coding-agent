@@ -168,11 +168,12 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
         agent_seconds = round(time.perf_counter() - started, 3)
 
         verify_results = []
-        for verify in task.get("verify", []):
-            verify_results.append(run_command(verify, workdir, args.verify_timeout))
+        if not args.dry_run:
+            for verify in task.get("verify", []):
+                verify_results.append(run_command(verify, workdir, args.verify_timeout))
 
         diff, changed_files = collect_diff(workdir, has_git)
-        failures = evaluate_assertions(
+        failures = [] if args.dry_run else evaluate_assertions(
             task, agent_result["stdout"], diff, changed_files, workdir, verify_results
         )
         if agent_result["returncode"] != 0:
