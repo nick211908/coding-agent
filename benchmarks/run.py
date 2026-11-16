@@ -140,14 +140,14 @@ def run_one(task: dict[str, Any], run_index: int, args: argparse.Namespace) -> d
         config_dir.mkdir(exist_ok=True)
         model = args.model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         config = (
-            'approval = "yolo"\\n'
-            f"max_turns = {args.max_turns}\\n"
-            "hooks_enabled = false\\n"
-            "skills_enabled = false\\n"
-            "\\n"
-            "[model]\\n"
-            f'name = "{model}"\\n'
-            "temperature = 0.0\\n"
+            'approval = "yolo"\n'
+            f"max_turns = {args.max_turns}\n"
+            "hooks_enabled = false\n"
+            "skills_enabled = false\n"
+            "\n"
+            "[model]\n"
+            f'name = "{model}"\n'
+            "temperature = 0.0\n"
         )
         (config_dir / "config.toml").write_text(config, encoding="utf-8")
 
